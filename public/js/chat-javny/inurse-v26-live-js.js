@@ -430,6 +430,47 @@ function searchINurse(query,focus='all',limit=5){
     resultados:scored.map(x=>x.item.payload)
   };
 }
+/* Herramienta buscar_cercanos (decisión de Juanky, tras el revert): el modelo
+   la LANZA cuando la conversación lo pide, igual que search_inurse — ninguna
+   capa por turno, la fluidez no se toca. Usa el MISMO /api/nearby que el panel
+   de Servicios cercanos, y la posición sale de EnferixNearby.getCoords, que
+   NUNCA dispara el diálogo de permiso del navegador en mitad de una llamada de
+   voz: si el permiso no está concedido de antes, la respuesta es decirlo, no
+   interrumpir. Nunca se inventa un centro, una dirección ni una distancia. */
+async function buscarCercanosLive(tipo){
+  const t=(tipo==='hospital'||tipo==='aed')?tipo:'all';
+  if(!window.EnferixNearby||!window.EnferixNearby.getCoords){
+    return {error:'La función de ubicación de la aplicación no está disponible en esta pantalla.'};
+  }
+  let coords=null;
+  try{coords=await window.EnferixNearby.getCoords({timeoutMs:8000});}catch(e){}
+  if(!coords){
+    return {error:'Sin ubicación: el usuario no ha concedido el permiso de ubicación a la aplicación (se activa desde Servicios cercanos). No des ningún centro, dirección ni distancia de memoria.'};
+  }
+  const ctrl=(typeof AbortController!=='undefined')?new AbortController():null;
+  const timer=ctrl?setTimeout(()=>ctrl.abort(),12000):null;
+  try{
+    const r=await fetch('/api/nearby?lat='+coords.lat+'&lon='+coords.lon+'&type='+t,ctrl?{signal:ctrl.signal}:{});
+    const d=await r.json().catch(()=>({}));
+    if(timer)clearTimeout(timer);
+    if(!r.ok)return {error:'La búsqueda de centros falló: '+((d&&d.error)||('HTTP '+r.status))+'. Dilo tal cual; no inventes ningún centro.'};
+    const items=(d.items||[]).slice(0,6).map(x=>({
+      nombre:x.name,
+      tipo:x.kind==='aed'?'desfibrilador (DEA)':'hospital / urgencias',
+      distancia_km:x.distanceKm,
+      direccion:x.address||'',
+      telefono:x.phone||''
+    }));
+    if(!items.length)return {resultados:[],notice:'Sin hospitales ni DEA registrados en las fuentes consultadas en un radio de 5 km. Dilo tal cual.'};
+    return {
+      resultados:items,
+      notice:'Datos reales de '+(d.source||'las fuentes de la aplicación')+', con la ubicación compartida por el propio usuario. Lee nombre y distancia; no añadas centros que no estén en la lista.'
+    };
+  }catch(e){
+    if(timer)clearTimeout(timer);
+    return {error:'La búsqueda de centros no respondió a tiempo. Dilo tal cual; no inventes ningún centro.'};
+  }
+}
 function updateCaseFromTool(args){
   if(args.priority)caseData.priority=String(args.priority).slice(0,300);
   if(args.patient_summary)caseData.patientSummary=String(args.patient_summary).slice(0,900);
@@ -535,6 +576,7 @@ Durante un caso:
 5. Antes de dar orientación basada en protocolos DEBES llamar a search_inurse. Conserva la procedencia entre Guías clínicas y Biblioteca virtual.
 6. El contenido interno puede proceder de documentación antigua. No lo presentes como guía actual y señala que debe contrastarse.
 7. No inventes dosis, concentraciones, energías, tiempos ni contraindicaciones. Solo menciona una dosis si aparece expresamente en la fuente devuelta, leyéndola despacio y diciendo que debe verificarse con la ficha técnica/protocolo vigente.
+7b. Si preguntan por el hospital, las urgencias o el desfibrilador (DEA) más cercano, llama a buscar_cercanos y lee SOLO lo que devuelva: nombre y distancia, y la dirección si la piden. Si devuelve un error o no hay ubicación, dilo tal cual y sigue con el caso. Nunca digas un centro, una dirección ni una distancia que no vengan de la herramienta.
 8. Llama a update_case cuando cambie la prioridad, aparezca una señal de alarma, haya nuevas actuaciones o falten datos.
 9. No repitas nombres, DNI, números de historia, teléfonos ni otros identificadores.
 9b. En el panel del caso (update_case) recoge SÓLO lo que el usuario ha dicho, nunca lo inferido. Si dice "mi padre", el resumen es "padre del usuario", no "varón" ni una edad: el sexo y la edad no se han dicho. No completes sexo, edad, antecedentes ni diagnóstico a partir de suposiciones; deja el hueco o ponlo en datos pendientes. Lo que se muestra en pantalla se lee como dato del caso, y un dato inventado es peor que un hueco.
@@ -557,6 +599,16 @@ const tools=[{
           limit:{type:'INTEGER',description:'Número de resultados, entre 1 y 8.'}
         },
         required:['query']
+      }
+    },
+    {
+      name:'buscar_cercanos',
+      description:'Hospitales, urgencias y desfibriladores (DEA) reales cerca del usuario, con nombre, distancia y dirección. Usa la ubicación que el usuario ya compartió con la aplicación; si no hay permiso, devuelve un error que hay que transmitir tal cual. Nunca inventes un centro ni una distancia.',
+      parameters:{
+        type:'OBJECT',
+        properties:{
+          tipo:{type:'STRING',enum:['hospital','aed','all'],description:'Qué buscar: hospitales, desfibriladores o ambos.'}
+        }
       }
     },
     {
@@ -584,6 +636,8 @@ async function executeToolCall(toolCall){
     try{
       if(fc.name==='search_inurse'){
         result=searchINurse(args.query||'',args.focus||'all',args.limit||5);
+      }else if(fc.name==='buscar_cercanos'){
+        result=await buscarCercanosLive(args.tipo||'all');
       }else if(fc.name==='update_case'){
         result=updateCaseFromTool(args);
       }else{

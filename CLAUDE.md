@@ -324,6 +324,17 @@ Lo que sigue siendo cierto del Live actual:
   Render.
 - El guion de Live es SUYO (`SYSTEM_INSTRUCTION` en su archivo), no el
   `guion-clinico.mjs` de la portada y el chat. Son dos textos distintos.
+- **`buscar_cercanos` en Live** (pedido por Juanky al detectar que Live no
+  tenía NINGUNA vía de ubicación aunque el permiso estuviera concedido —
+  el panel sí funcionaba porque va por otro camino). Tercera *function call*
+  junto a `search_inurse` y `update_case`, con su misma filosofía post-revert:
+  el modelo la lanza si la conversación lo pide, cero capas por turno. El
+  navegador resuelve la posición con `EnferixNearby.getCoords` (JAMÁS dispara
+  el diálogo de permiso en mitad de una llamada de voz: sin permiso previo
+  devuelve error honesto) y llama al MISMO `/api/nearby` del panel. La regla
+  7b del guion de Live obliga a leer solo lo devuelto y a transmitir los
+  errores tal cual. Asumido, como con `search_inurse`: en plena urgencia la
+  brevedad puede hacer que a veces no la invoque.
 
 **Lo que NO se revirtió y sigue vivo en la portada y el chat**: la migración a
 Anthropic, el streaming, `guion-clinico.mjs` con sus dos modos —incluido el
