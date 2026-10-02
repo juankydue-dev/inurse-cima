@@ -69,3 +69,33 @@ La secuencia esperada es:
 Las fuentes externas (PubMed, Europe PMC, NICE, CIMA…) requieren salida a
 internet: en un entorno sin ella devuelven vacío y la respuesta se redacta sin
 referencias, mostrando el estado vacío honesto del panel.
+
+## Doble de la API de Anthropic (con herramientas)
+
+Para probar el camino de Claude —incluido el bucle de herramientas del
+frente 3— sin clave y sin red, hay un doble en `scripts/anthropic-stub.mjs`:
+en la primera ronda responde texto y una llamada a `calcular_escala` (más
+`buscar_en_enferix` en paralelo), y en la segunda devuelve texto con un eco
+del `tool_result` recibido, para comprobar que el resultado REAL de la
+herramienta llegó al modelo. Su relleno es inconfundible como relleno.
+
+```bash
+node scripts/anthropic-stub.mjs &
+PORT=3344 GEMINI_API_KEY=stub-key \
+  ANTHROPIC_API_KEY=stub-key ANTHROPIC_BASE_URL=http://127.0.0.1:3398 \
+  NO_PROXY=localhost,127.0.0.1 node server.mjs
+```
+
+Eventos nuevos que emite el chat interno (`/api/javny/chat/stream`) cuando el
+modelo usa herramientas — los clientes que no los conocen los ignoran:
+
+```
+{"type":"herramienta","estado":"inicio","herramienta":"calcular_escala"}
+{"type":"herramienta","estado":"fin","herramienta":"calcular_escala","ok":true,"ms":…}
+{"type":"enlaces","enlaces":[{"tipo":"escala","id":"glasgow","titulo":"…"}]}
+```
+
+El endpoint público (`/api/javny/public/chat/stream`) y la portada
+(`conciso: true`) NO llevan herramientas: debe salir 0 eventos `herramienta`
+en ambos. Las herramientas en sí se prueban sin modelo con
+`sources/javny-tools.mjs` directamente (ver los `run` de cada una).

@@ -732,6 +732,33 @@ window.EnferixNearby={
           }).catch(function(){if(!done){done=true;clearTimeout(timer);resolve('')}});
       },function(){if(!done){done=true;clearTimeout(timer);resolve('')}},{enableHighAccuracy:false,timeout:12000,maximumAge:120000});
     });
+  },
+  // Coordenadas crudas para el chat de Javny: viajan en el body de la consulta
+  // y solo las consume la herramienta centros_cercanos del servidor. A
+  // DIFERENCIA de getContextText, esto NUNCA dispara el aviso de permiso del
+  // navegador: solo devuelve posición si el permiso ya está concedido (se
+  // comprueba con la Permissions API y, si no existe, con el consentimiento
+  // guardado de Servicios cercanos). Sin permiso previo → null, y Javny
+  // responde pidiendo activar la ubicación.
+  getCoords:function(opts){
+    opts=opts||{};
+    if(!('geolocation' in navigator))return Promise.resolve(null);
+    var concedido=(navigator.permissions&&navigator.permissions.query)
+      ?navigator.permissions.query({name:'geolocation'}).then(function(st){return st.state==='granted'}).catch(function(){return nearbyConsent()})
+      :Promise.resolve(nearbyConsent());
+    return concedido.then(function(ok){
+      if(!ok)return null;
+      return new Promise(function(resolve){
+        var done=false;
+        var ms=opts.timeoutMs||3500;
+        var timer=setTimeout(function(){if(!done){done=true;resolve(null)}},ms);
+        navigator.geolocation.getCurrentPosition(function(pos){
+          if(done)return;done=true;clearTimeout(timer);
+          resolve({lat:pos.coords.latitude,lon:pos.coords.longitude});
+        },function(){if(!done){done=true;clearTimeout(timer);resolve(null)}},
+        {enableHighAccuracy:false,timeout:ms,maximumAge:300000});
+      });
+    });
   }
 };
 /* Comando de voz: "hospital cercano", "dea cercano", "desfibrilador", "dónde puedo ir"... */
