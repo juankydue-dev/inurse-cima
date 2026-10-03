@@ -1109,7 +1109,45 @@
  }
 
  var SPEC_NAMES_CC={cardio:'Cardiología',intensiva:'UCI / Medicina Intensiva',urgencias:'Urgencias',neuro:'Neurología',trauma:'Traumatología y Quemados',otras:'Otras especialidades'};
- function call(userText,att,guideCtx,libraryCtx,pmcCtx,litCtx,guidelineCtx,niceCtx,snomedCtx,hist,route,onDelta,nearbyCtx){
+ /* P36 · Herramientas de Javny: etiquetas del indicador mientras el servidor
+    ejecuta una herramienta, y panel de botones para abrir las fichas/escalas
+    que las herramientas enlazaron. Los eventos NDJSON nuevos ('herramienta',
+    'enlaces') los ignoran sin ruido los clientes que no los conocen. */
+ var P36_TOOL_LABELS={
+  calcular_escala:'Calculando con la calculadora validada',
+  dilucion_farmaco:'Consultando el formulario de fármacos',
+  interacciones_farmacos:'Comprobando interacciones en CIMA',
+  centros_cercanos:'Buscando centros cercanos',
+  buscar_en_enferix:'Buscando en Enferix'
+ };
+ function p36ToolNote(evt){
+  var typEl=document.querySelector('.cc-typing');if(!typEl)return;
+  var lbl=typEl.querySelector('.p36-tool');
+  if(evt.estado==='inicio'){
+   if(!lbl){lbl=document.createElement('small');lbl.className='p36-tool';typEl.appendChild(lbl);}
+   lbl.textContent='🔧 '+(P36_TOOL_LABELS[evt.herramienta]||evt.herramienta)+'…';
+  }else if(lbl){lbl.textContent='';}
+ }
+ function p36EnlacesPanel(enl){
+  if(!enl||!enl.length)return '';
+  return '<div class="p36-enlaces">'+enl.map(function(e){
+   return '<button type="button" class="p36-enlace" data-p36-tipo="'+esc(e.tipo)+'" data-p36-id="'+esc(e.id)+'">'
+    +(e.tipo==='escala'?'🧮':'📄')+' '+esc(e.titulo)+'</button>';
+  }).join('')+'</div>';
+ }
+ function p36AttachEnlaces(node){
+  node.querySelectorAll('.p36-enlace').forEach(function(b){
+   b.onclick=function(){
+    var tipo=b.getAttribute('data-p36-tipo'),id=b.getAttribute('data-p36-id');
+    if(tipo==='ficha'&&typeof window.openDoc==='function')window.openDoc(id);
+    else if(tipo==='escala'){
+     if(window.EnferixEscalas&&window.EnferixEscalas.openCalc)window.EnferixEscalas.openCalc(id);
+     else if(typeof window.openCalcs==='function')window.openCalcs(id);
+    }
+   };
+  });
+ }
+ function call(userText,att,guideCtx,libraryCtx,pmcCtx,litCtx,guidelineCtx,niceCtx,snomedCtx,hist,route,onDelta,nearbyCtx,ubicacion){
   var key=lget(KEYK,''),backend=backendUrl();
   var memory=caseMemory.slice(-6).join('\n');
   var mySpec='';try{mySpec=localStorage.getItem('inurse_myspec_v1')||'';}catch(e){}
@@ -1214,7 +1252,10 @@
    }
    var backendPayload={
     question:userText,context:{guides:guideCtx||'',library:libraryCtx||'',pmc:pmcCtx||'',literature:(litCtx||'')+(refsBlock?'\n\n'+refsBlock:''),guidelines:guidelineCtx||'',nice:niceCtx||'',snomed:snomedCtx||'',refs:refsBlock||'',nearby:nearbyCtx||''},history:hist.slice(-10),caseMemory:caseMemory.slice(-6),route:route||{},
-    attachment:att?{kind:att.kind,mime:att.mime,name:att.name,data:att.data||'',text:att.text||'',mediaType:inferMediaType(att,userText)}:null
+    attachment:att?{kind:att.kind,mime:att.mime,name:att.name,data:att.data||'',text:att.text||'',mediaType:inferMediaType(att,userText)}:null,
+    // Coordenadas para la herramienta centros_cercanos del servidor. Solo van
+    // si el permiso de ubicación ya estaba concedido (EnferixNearby.getCoords).
+    ubicacion:ubicacion||null
    };
    function callBackendNonStreaming(){
     return fetch(backend+'/api/javny/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(backendPayload)}).then(function(res){return res.json().catch(function(){return {}}).then(function(data){
@@ -1234,6 +1275,8 @@
       var evt;try{evt=JSON.parse(line);}catch(e){return;}
       if(evt.type==='sources'){applyBackendSources(evt.sources);gotSources=true;}
       else if(evt.type==='delta'){acumulado+=(evt.chunk||'');if(onDelta)onDelta(acumulado);}
+      else if(evt.type==='herramienta'){try{p36ToolNote(evt)}catch(e){}}
+      else if(evt.type==='enlaces'){window.__p36Enlaces=evt.enlaces||[];}
       else if(evt.type==='done'){if(!gotSources)applyBackendSources(evt.sources);finalAnswer=(evt.answer||'').trim();}
       else if(evt.type==='error'){var se=new Error(evt.error||'Error del servidor');se.javnyServerError=true;throw se;}
      }
@@ -1352,12 +1395,26 @@
   if(/hospital|urgencias?\s+(m[aá]s\s+)?cercan|\bdea\b|desfibrilador|d[oó]nde\s+puedo\s+ir|centro\s+sanitario\s+cercan/i.test(text||'')&&window.EnferixNearby&&window.EnferixNearby.getContextText){
    try{nearbyCtx=await window.EnferixNearby.getContextText()}catch(e){}
   }
-  call(text,att,guideCtx,libraryCtx,pmcCtx,litCtx,guidelineCtx,niceCtx,snomedCtx,messages.slice(0,-1),route,canStream?onStreamDelta:null,nearbyCtx).then(function(reply){
+  /* P36: coordenadas para la herramienta centros_cercanos del servidor. Se
+     mandan en CADA consulta si el permiso ya está concedido (getCoords nunca
+     pregunta), porque Javny puede necesitarlas aunque la pregunta no case con
+     la regex de arriba ("¿y el DEA?" a mitad de conversación). */
+  var ubicacion=null;
+  if(window.EnferixNearby&&window.EnferixNearby.getCoords){
+   try{ubicacion=await window.EnferixNearby.getCoords({timeoutMs:3000})}catch(e){}
+  }
+  window.__p36Enlaces=[];
+  call(text,att,guideCtx,libraryCtx,pmcCtx,litCtx,guidelineCtx,niceCtx,snomedCtx,messages.slice(0,-1),route,canStream?onStreamDelta:null,nearbyCtx,ubicacion).then(function(reply){
    if(streamNode&&streamNode.parentNode)streamNode.parentNode.removeChild(streamNode);
    var refsNow=window.__v20Refs||refs;
    if(window.__v20OrchestratorSources&&window.__v20OrchestratorSources.length)allSources=allSources.concat(window.__v20OrchestratorSources);
    typ.remove();var bm={role:'bot',content:reply,refs:refsNow};messages.push(bm);var node=rmsg(bm);
    node.insertAdjacentHTML('beforeend',mediaResultPanel(att,text));
+   /* P36: botones a las fichas/escalas que las herramientas enlazaron */
+   if(window.__p36Enlaces&&window.__p36Enlaces.length){
+    node.insertAdjacentHTML('beforeend',p36EnlacesPanel(window.__p36Enlaces));
+    p36AttachEnlaces(node);
+   }
    node.insertAdjacentHTML('beforeend',renderRefsPanel(refsNow));
    node.insertAdjacentHTML('beforeend',casePanel(snapshot));
    node.insertAdjacentHTML('beforeend',actionPanel(route));

@@ -169,14 +169,73 @@ frentes. El primero ya está en `main`; quedan los dos siguientes:
    estructura, extensión y citación `[n]` que contradicen al modo emergencia;
    el guion declara que su formato prevalece sobre ellas. Si se quita esa
    frase, el modo emergencia queda anulado en la práctica.
-3. **Function calling con las herramientas de la app** — que Javny pueda
-   invocar directamente las fuentes/acciones de Enferix (buscador CIMA,
-   escalas, terminología NNN, evidencia relacionada…) como *tools* de
-   Gemini en vez de solo recibir contexto ya ensamblado por
-   `searchAllSources`.
+3. **Function calling con las herramientas de la app** — implementado en la
+   rama `claude/youthful-tesla-3q8gg4` (PR en draft, pendiente del OK de
+   Juanky). Javny invoca las fuentes/acciones REALES de Enferix como *tools*
+   de la API de Anthropic (la redacción la hace Claude desde F1e; el fallback
+   de Gemini NO lleva herramientas: mejor una respuesta sin ellas que
+   ninguna). Lo que hay que saber antes de tocarlo:
+   - **Catálogo y guion**: `sources/javny-tools.mjs` define las cinco
+     herramientas (`calcular_escala`, `dilucion_farmaco`,
+     `interacciones_farmacos`, `buscar_en_enferix`, `centros_cercanos`) y el
+     `GUION_HERRAMIENTAS`, que se añade al guion SOLO cuando las herramientas
+     van en la llamada — contarle herramientas al Gemini de reserva, que no
+     las tiene, sería pedirle que las alucine. El bucle de tool_use vive en
+     `streamAnthropicCall` (`sources/anthropic.mjs`): tope de 5 rondas y en
+     la última se fuerza texto con `tool_choice: none`; una negativa o un
+     `max_tokens` a mitad de llamada no ejecuta NADA.
+   - **Opt-in por endpoint**: `orchestrateStream` solo activa herramientas si
+     el llamador pasa `herramientas: true` Y no es `conciso`. Hoy solo las
+     pide el chat interno (`/api/javny/chat/stream`); la portada (conciso,
+     vive de la latencia) y el público anónimo quedan fuera a propósito.
+     `JAVNY_TOOLS=0` las apaga en Render sin desplegar.
+   - **Escalas**: el servidor carga el bundle VALIDADO
+     (`public/data/escalas-clinicas.js`) con `node:vm` vía
+     `sources/datos-app.mjs` — nunca una copia. Los selects se resuelven por
+     etiqueta (en NEWS2/MEWS los puntos se repiten entre opciones, el número
+     no identifica); una constante medida (FR=22) solo se traduce a su tramo
+     cuando TODAS las opciones del campo son tramos puros (los compuestos de
+     APACHE «≥ 41 o ≤ 29,9» y las SpO₂ con «con/sin oxígeno» se piden por
+     etiqueta). Si falta UN select, se calcula con todas sus opciones y solo
+     se omite si el resultado no cambia (así «Escala 1» no exige la SpO₂ de
+     la escala 2). Campos de más, de menos o fuera de rango → error honesto
+     con la especificación, nunca cálculo a medias.
+   - **Interacciones**: `sources/interacciones.mjs` es el criterio del
+     comprobador del cliente (`inurse-interacciones-js.js`) portado al
+     servidor: misma lista de sales, mismo `principiosActivos`, mismo
+     `buscarMencion`. El cliente no puede importar módulos del servidor, así
+     que HOY ESTÁN DUPLICADOS: al tocar uno, replicar en el otro (las notas
+     de cabecera de ambos archivos lo recuerdan). `medicineDetail` se movió
+     de server.mjs a `sources/cima.mjs` por esto mismo.
+   - **Ubicación**: las coordenadas viajan en `body.ubicacion` desde el chat
+     del avatar, y SOLO si el permiso ya está concedido —
+     `EnferixNearby.getCoords` comprueba la Permissions API y nunca dispara
+     el aviso del navegador en mitad de una conversación (el flujo que sí
+     pregunta sigue siendo el de siempre: panel de cercanos /
+     `getContextText` con la regex). El modelo no ve las coordenadas ni puede
+     inventarlas: las consume `centros_cercanos`, que reutiliza
+     `sources/cercanos.mjs` — la MISMA combinación Google/Overpass que
+     `/api/nearby`, extraída de esa ruta para que panel y chat cuenten lo
+     mismo.
+   - **Perfusiones**: `dilucion_farmaco` devuelve los datos EDITORIALES del
+     formulario (diluciones, dosis, bolo, notas con vía/compatibilidad) y NO
+     calcula mL/h: las fórmulas de `runPerf` siguen mezcladas con el DOM en
+     `inline-script-6388.js`, y transcribirlas a mano era crear una segunda
+     copia clínica. Extraerlas como función pura compartida es deuda de la
+     fase siguiente.
+   - **Eventos NDJSON nuevos**: `herramienta` (estado inicio/fin, pinta la
+     nota «🔧 …» en el indicador del chat) y `enlaces` (botones P36 bajo la
+     respuesta que abren `openDoc` / `EnferixEscalas.openCalc`). Los clientes
+     que no los conocen los ignoran sin romperse (portada incluida).
+   - **Pruebas sin clave**: `scripts/anthropic-stub.mjs` +
+     `docs/pruebas-streaming.md` (sección del doble de Anthropic). CIMA está
+     bloqueado desde el contenedor de desarrollo: las funciones de
+     coincidencia se prueban en seco y la integración real se verifica en
+     despliegue.
 
-Los frentes 2 y 3 aún sin empezar; se abren como rama nueva desde `main`
-cuando el usuario lo indique.
+El frente 3 cierra `javny-inteligente` cuando se mergee; la deuda que deja
+(fórmulas de perfusión como función pura, unificar el criterio de
+interacciones cliente/servidor) queda apuntada arriba.
 
 **Detalle del frente 2 según el usuario**: modo emergencia se activa cuando el
 mensaje indica situación urgente **en curso** (parada, atragantamiento,
@@ -265,6 +324,17 @@ Lo que sigue siendo cierto del Live actual:
   Render.
 - El guion de Live es SUYO (`SYSTEM_INSTRUCTION` en su archivo), no el
   `guion-clinico.mjs` de la portada y el chat. Son dos textos distintos.
+- **`buscar_cercanos` en Live** (pedido por Juanky al detectar que Live no
+  tenía NINGUNA vía de ubicación aunque el permiso estuviera concedido —
+  el panel sí funcionaba porque va por otro camino). Tercera *function call*
+  junto a `search_inurse` y `update_case`, con su misma filosofía post-revert:
+  el modelo la lanza si la conversación lo pide, cero capas por turno. El
+  navegador resuelve la posición con `EnferixNearby.getCoords` (JAMÁS dispara
+  el diálogo de permiso en mitad de una llamada de voz: sin permiso previo
+  devuelve error honesto) y llama al MISMO `/api/nearby` del panel. La regla
+  7b del guion de Live obliga a leer solo lo devuelto y a transmitir los
+  errores tal cual. Asumido, como con `search_inurse`: en plena urgencia la
+  brevedad puede hacer que a veces no la invoque.
 
 **Lo que NO se revirtió y sigue vivo en la portada y el chat**: la migración a
 Anthropic, el streaming, `guion-clinico.mjs` con sus dos modos —incluido el

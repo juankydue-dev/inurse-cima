@@ -10,6 +10,7 @@ import { searchWHO } from "./who.mjs";
 import { searchCIMA } from "./cima.mjs";
 import { SYSTEM_PROMPT } from "./guion-clinico.mjs";
 import { streamAnthropicCall, anthropicDisponible, ANTHROPIC_MODEL } from "./anthropic.mjs";
+import { construirHerramientas, GUION_HERRAMIENTAS } from "./javny-tools.mjs";
 
 export const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
 // GEMINI_BASE_URL solo se usa para levantar un doble local de la API en pruebas
@@ -770,7 +771,7 @@ export async function orchestrate({ question, context: clientContext, history, a
 // (fuentes en cuanto se resuelve la búsqueda, texto parcial a medida que Gemini lo
 // genera, y un evento final "done"). No escribe nada en la red directamente: eso lo
 // hace el llamador (server.mjs), que decide el formato de transporte (NDJSON).
-export async function orchestrateStream({ question, context: clientContext, history, apiKey, model, caseMemory, route, attachment, conciso }, onEvent) {
+export async function orchestrateStream({ question, context: clientContext, history, apiKey, model, caseMemory, route, attachment, conciso, ubicacion, herramientas: herramientasPermitidas }, onEvent) {
   const key = apiKey || process.env.GEMINI_API_KEY || "";
   if (!key) {
     throw new Error("No hay API Key de Gemini configurada. Añade GEMINI_API_KEY en las variables de entorno de Render.");
@@ -847,15 +848,44 @@ export async function orchestrateStream({ question, context: clientContext, hist
     temperature: 0.3
   }, emitir("Gemini"));
 
+  // ── Herramientas de la app (frente 3) ───────────────────────────────────────
+  // OPT-IN explícito del llamador (server.mjs lo pide solo para el chat
+  // interno /api/javny/chat/stream): el endpoint público anónimo y cualquier
+  // otro consumidor quedan fuera salvo que lo pidan. Además, solo en el camino
+  // de Claude y solo fuera de la portada: `conciso` es la consulta de portada,
+  // que vive de la latencia y mantiene su flujo de contexto preensamblado de
+  // siempre. El fallback de Gemini tampoco las lleva (es el plan B: mejor una
+  // respuesta sin herramientas que ninguna).
+  const conHerramientas = herramientasPermitidas === true && anthropicDisponible() && !conciso && process.env.JAVNY_TOOLS !== "0";
+  const enlaces = [];
+  const herramientas = conHerramientas
+    ? construirHerramientas({
+        ubicacion,
+        onEnlace: (e) => {
+          if (!enlaces.some(x => x.tipo === e.tipo && x.id === e.id)) enlaces.push(e);
+        }
+      })
+    : null;
+
   let answer;
   if (anthropicDisponible()) {
     try {
-      answer = await streamAnthropicCall(sistema, userPrompt, {
-        model: ANTHROPIC_MODEL,
-        history,
-        maxOutputTokens: conciso ? 2048 : 8192,
-        conciso: !!conciso
-      }, emitir("Claude"));
+      answer = await streamAnthropicCall(
+        conHerramientas ? sistema + GUION_HERRAMIENTAS : sistema,
+        userPrompt,
+        {
+          model: ANTHROPIC_MODEL,
+          history,
+          maxOutputTokens: conciso ? 2048 : 8192,
+          conciso: !!conciso,
+          herramientas,
+          onHerramienta: (evt) => onEvent({ type: "herramienta", ...evt })
+        },
+        emitir("Claude")
+      );
+      // Enlaces a fichas/escalas que las herramientas registraron: la app los
+      // pinta como botones bajo la respuesta. Se emiten antes del "done".
+      if (enlaces.length) onEvent({ type: "enlaces", enlaces });
     } catch (err) {
       const motivo = err instanceof Error ? err.message : String(err);
       // El fallback sólo es limpio si Claude no llegó a escribir nada. Si ya
