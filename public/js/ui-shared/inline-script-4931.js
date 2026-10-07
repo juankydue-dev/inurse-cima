@@ -71,7 +71,7 @@
   }catch(e){}
   var toks=nrm(qy).split(/[^a-z0-9]+/).filter(function(w){return w.length>2&&!STOP[w]});
   var seen={},tk=[];toks.forEach(function(w){if(!seen[w]){seen[w]=1;tk.push(w)}});
-  if(!tk.length)return {context:'',sources:[]};
+  if(!tk.length)return {context:'',sources:[],evidenceQueries:[]};
   function score(t,title){
    var s=0,nt=nrm(title||'');
    for(var i=0;i<tk.length;i++){
@@ -92,6 +92,22 @@
    });
   }
   dd=dd.sort(function(a,b){return b.s-a.s}).slice(0,8);
+  /* Términos editoriales de búsqueda en inglés (evidenceQuery) de las guías
+     recuperadas, en orden de relevancia. El servidor pregunta con ellos a
+     PubMed / Europe PMC / NICE, que indexan en inglés: sin ellos, una consulta
+     cuyo término no esté en el diccionario del orquestador se buscaba en
+     castellano y volvía sin evidencia. Son editoriales de cada ficha: aquí no
+     se traduce nada. */
+  var evidenceQueries=[];
+  dd.forEach(function(x){
+   /* Solo fichas con coincidencia en el TÍTULO (score ≥7): una coincidencia de
+      una palabra suelta en el cuerpo no identifica el tema de la pregunta, y su
+      término colaría búsquedas de otro asunto. */
+   if(x.s<7)return;
+   var eq=x.o.d.evidenceQuery&&String(x.o.d.evidenceQuery).trim();
+   if(eq&&evidenceQueries.indexOf(eq)<0&&evidenceQueries.length<3)evidenceQueries.push(eq);
+  });
+  try{window.__v20EvidenceQueries=evidenceQueries}catch(e){}
   var vv=VIDX.map(function(o){return {o:o,s:score(o.t,o.v.n)}})
    .filter(function(x){return x.s>0}).sort(function(a,b){return b.s-a.s}).slice(0,5);
   var ctx='',sources=[];
@@ -106,7 +122,7 @@
    ctx+='### [VADEMÉCUM] '+v.n+'\nID: '+id+' · Categoría: '+(v.cat||'Farmacología')+'\nIndicación: '+(v.i||'').slice(0,320)+'\nPosología documental: '+(v.p||'').slice(0,380)+'\nPrecauciones: '+(v.r||v.c||'').slice(0,280)+'\n\n';
    sources.push({type:'drug',id:id,title:v.n,meta:v.cat||'Vademécum',score:x.s});
   });
-  return {context:ctx.trim(),sources:sources};
+  return {context:ctx.trim(),sources:sources,evidenceQueries:evidenceQueries};
  }
  function retrieve(qy){return retrieveDetailed(qy).context}
  /* La consulta de portada (p33) necesita EXACTAMENTE esta recuperación, no una
@@ -1214,6 +1230,9 @@
    }
    var backendPayload={
     question:userText,context:{guides:guideCtx||'',library:libraryCtx||'',pmc:pmcCtx||'',literature:(litCtx||'')+(refsBlock?'\n\n'+refsBlock:''),guidelines:guidelineCtx||'',nice:niceCtx||'',snomed:snomedCtx||'',refs:refsBlock||'',nearby:nearbyCtx||''},history:hist.slice(-10),caseMemory:caseMemory.slice(-6),route:route||{},
+    /* evidenceQuery editorial de las guías recuperadas para esta pregunta
+       (lo deja retrieveDetailed): el servidor busca la evidencia con ellos. */
+    evidenceQueries:(window.__v20EvidenceQueries||[]).slice(0,3),
     attachment:att?{kind:att.kind,mime:att.mime,name:att.name,data:att.data||'',text:att.text||'',mediaType:inferMediaType(att,userText)}:null
    };
    function callBackendNonStreaming(){

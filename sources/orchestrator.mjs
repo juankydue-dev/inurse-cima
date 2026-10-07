@@ -104,9 +104,20 @@ function normalize(text) {
     .replace(/\s+/g, " ").trim();
 }
 
-function generateQueries(question) {
+function generateQueries(question, editoriales = []) {
   const norm = normalize(question);
   const queries = [];
+
+  // Términos editoriales de las fichas recuperadas (evidenceQuery): ya vienen en
+  // el inglés con el que está indexada la literatura, así que van por delante del
+  // diccionario. Sin ellos, una pregunta cuyo término clínico no esté en
+  // MEDICAL_TERMS se buscaba en castellano contra bases en inglés y volvía vacía.
+  // Como mucho dos: el tercer hueco queda libre para el diccionario o para la
+  // propia pregunta, que siguen cubriendo lo que las fichas no recuperen.
+  for (const term of editoriales.slice(0, 2)) {
+    const t = String(term || "").trim();
+    if (t) queries.push(t);
+  }
 
   for (const [es, en] of Object.entries(MEDICAL_TERMS)) {
     if (norm.includes(normalize(es))) {
@@ -241,8 +252,8 @@ function medir(nombre, promesa, vacio, registro, ms = SOURCE_BUDGET_MS) {
   ]);
 }
 
-async function searchAllSources(question, timings = []) {
-  const queries = generateQueries(question);
+async function searchAllSources(question, timings = [], evidenceQueries = []) {
+  const queries = generateQueries(question, evidenceQueries);
   const guidelineQuery = `(${queries[0]}) AND (${GUIDELINE_ORGS.join(" OR ")})`;
   const drugName = detectDrugName(question);
   const drugRelated = isDrugRelated(question);
@@ -720,10 +731,10 @@ function buildSourcesPayload(refs, { queries, errors }) {
   };
 }
 
-async function prepareOrchestration(question, clientContext, onPhase) {
+async function prepareOrchestration(question, clientContext, onPhase, evidenceQueries = []) {
   const startedAt = Date.now();
   if (onPhase) onPhase({ phase: "searching" });
-  const searchResults = await searchAllSources(question);
+  const searchResults = await searchAllSources(question, [], evidenceQueries);
   const { articles, niceGuidelines, fdaDrug, cimaDrugs, drugDetected, queries, errors } = searchResults;
   console.log(`[Orquestador] Queries: ${JSON.stringify(queries)} | Artículos: ${articles.length} | NICE: ${niceGuidelines.length} | FDA: ${fdaDrug ? "sí" : "no"} | CIMA: ${cimaDrugs.length}` +
     (drugDetected ? ` | Fármaco: ${drugDetected}` : "") +
@@ -746,13 +757,13 @@ function buildSystemPrompt(caseMemory) {
   return sys;
 }
 
-export async function orchestrate({ question, context: clientContext, history, apiKey, model, caseMemory, route, attachment }) {
+export async function orchestrate({ question, context: clientContext, history, apiKey, model, caseMemory, route, attachment, evidenceQueries }) {
   const key = apiKey || process.env.GEMINI_API_KEY || "";
   if (!key) {
     throw new Error("No hay API Key de Gemini configurada. Añade GEMINI_API_KEY en las variables de entorno de Render.");
   }
 
-  const { userPrompt, sources } = await prepareOrchestration(question, clientContext);
+  const { userPrompt, sources } = await prepareOrchestration(question, clientContext, undefined, evidenceQueries || []);
 
   const answer = await callGemini(buildSystemPrompt(caseMemory), userPrompt, {
     apiKey: key,
@@ -770,7 +781,7 @@ export async function orchestrate({ question, context: clientContext, history, a
 // (fuentes en cuanto se resuelve la búsqueda, texto parcial a medida que Gemini lo
 // genera, y un evento final "done"). No escribe nada en la red directamente: eso lo
 // hace el llamador (server.mjs), que decide el formato de transporte (NDJSON).
-export async function orchestrateStream({ question, context: clientContext, history, apiKey, model, caseMemory, route, attachment, conciso }, onEvent) {
+export async function orchestrateStream({ question, context: clientContext, history, apiKey, model, caseMemory, route, attachment, conciso, evidenceQueries }, onEvent) {
   const key = apiKey || process.env.GEMINI_API_KEY || "";
   if (!key) {
     throw new Error("No hay API Key de Gemini configurada. Añade GEMINI_API_KEY en las variables de entorno de Render.");

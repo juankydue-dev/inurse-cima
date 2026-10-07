@@ -214,10 +214,15 @@
   }
 
   function buildContext(question){
-    var guides = '', library = '';
+    var guides = '', library = '', evidenceQueries = [];
     try {
       if(typeof window.EnferixGuideRetrieve === 'function'){
-        guides = (window.EnferixGuideRetrieve(question) || {}).context || '';
+        var gd = window.EnferixGuideRetrieve(question) || {};
+        guides = gd.context || '';
+        /* evidenceQuery editorial de las fichas recuperadas: con ellos el
+           servidor pregunta a las fuentes externas en el inglés en que están
+           indexadas, en vez de mandar la frase en castellano. */
+        evidenceQueries = gd.evidenceQueries || [];
       }
     } catch(e){}
     try {
@@ -234,7 +239,7 @@
       try { nearby = conTope(Promise.resolve(window.EnferixNearby.getContextText()), 2500); } catch(e){}
     }
     return nearby.then(function(n){
-      return { guides: guides, library: library, nearby: n || '' };
+      return { guides: guides, library: library, nearby: n || '', evidenceQueries: evidenceQueries };
     });
   }
 
@@ -307,12 +312,15 @@
       marca('contexto interno listo', performance.now() - tEnvio);
       var payload = {
         question: question,
-        context: contexto,
+        context: { guides: contexto.guides, library: contexto.library, nearby: contexto.nearby },
         history: [],
         caseMemory: [],
         route: {},
         // La portada responde corto y citado; el desarrollo largo es del chat.
-        conciso: true
+        conciso: true,
+        // Términos editoriales de búsqueda de las fichas recuperadas, para que
+        // la evidencia externa se busque en inglés (evidenceQuery, editorial).
+        evidenceQueries: contexto.evidenceQueries || []
       };
       var opts = {
         method: 'POST',
