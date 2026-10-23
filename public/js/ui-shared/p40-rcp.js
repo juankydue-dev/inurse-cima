@@ -459,5 +459,5 @@
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
   setTimeout(boot, 700); setTimeout(boot, 2400);
-  window.EnferixRCP = { open: abrir, iniciarParada: function(){ abrir(); iniciarParada(); }, anotar: anotar };
+  window.EnferixRCP = { open: abrir, iniciarParada: function(){ abrir(); iniciarParada(); }, anotar: anotar, activa: function(){ return !!parada; } };
 })();

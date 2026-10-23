@@ -577,6 +577,7 @@ Durante un caso:
 6. El contenido interno puede proceder de documentación antigua. No lo presentes como guía actual y señala que debe contrastarse.
 7. No inventes dosis, concentraciones, energías, tiempos ni contraindicaciones. Solo menciona una dosis si aparece expresamente en la fuente devuelta, leyéndola despacio y diciendo que debe verificarse con la ficha técnica/protocolo vigente.
 7b. Si preguntan por el hospital, las urgencias o el desfibrilador (DEA) más cercano, llama a buscar_cercanos y lee SOLO lo que devuelva: nombre y distancia, y la dirección si la piden. Si devuelve un error o no hay ubicación, dilo tal cual y sigue con el caso. Nunca digas un centro, una dirección ni una distancia que no vengan de la herramienta.
+7c. Si el usuario pide iniciar la parada, el metrónomo o el ritmo de compresiones, llama a rcp_parada con accion "iniciar". Si durante una parada canta un evento (descarga, adrenalina, intubación…), llama a rcp_parada con accion "anotar" pasando el evento tal como lo dijo. Esa herramienta solo cronometra y registra en el dispositivo: la orientación clínica sigue saliendo de search_inurse y de estas reglas.
 8. Llama a update_case cuando cambie la prioridad, aparezca una señal de alarma, haya nuevas actuaciones o falten datos.
 9. No repitas nombres, DNI, números de historia, teléfonos ni otros identificadores.
 9b. En el panel del caso (update_case) recoge SÓLO lo que el usuario ha dicho, nunca lo inferido. Si dice "mi padre", el resumen es "padre del usuario", no "varón" ni una edad: el sexo y la edad no se han dicho. No completes sexo, edad, antecedentes ni diagnóstico a partir de suposiciones; deja el hueco o ponlo en datos pendientes. Lo que se muestra en pantalla se lee como dato del caso, y un dato inventado es peor que un hueco.
@@ -612,6 +613,18 @@ const tools=[{
       }
     },
     {
+      name:'rcp_parada',
+      description:'Controla la herramienta local de RCP de la aplicación: abre el panel e inicia a la vez el metrónomo de compresiones y el cronómetro de la parada, y apunta en el registro, con su hora exacta, los eventos que el usuario va cantando (descarga, adrenalina, intubación…). No calcula ni decide nada clínico: solo cronometra y registra en el dispositivo.',
+      parameters:{
+        type:'OBJECT',
+        properties:{
+          accion:{type:'STRING',enum:['iniciar','anotar'],description:'iniciar: abre el panel y arranca metrónomo, cronómetro y registro. anotar: apunta un evento con su hora (requiere una parada ya iniciada).'},
+          evento:{type:'STRING',description:'Solo con accion=anotar: el evento tal como lo ha dicho el usuario, p. ej. "Descarga" o "Adrenalina administrada".'}
+        },
+        required:['accion']
+      }
+    },
+    {
       name:'update_case',
       description:'Actualiza el panel temporal del caso para mostrar prioridad, resumen, actuaciones inmediatas, datos pendientes y señales de alarma.',
       parameters:{
@@ -628,6 +641,35 @@ const tools=[{
   ]
 }];
 
+/* Herramienta rcp_parada (decisión de Juanky): puente a la herramienta LOCAL
+   de RCP (P40, window.EnferixRCP). El modelo la lanza si la conversación lo
+   pide, igual que search_inurse — nada de esto toca el flujo de la charla.
+   Solo cronometra y registra; la orientación clínica sigue siendo del guion
+   y de search_inurse. Finalizar la parada se hace SIEMPRE desde el panel,
+   con su confirmación en pantalla, nunca por voz. */
+function rcpDesdeLive(args){
+  const rcp=window.EnferixRCP;
+  if(!rcp)return {error:'La herramienta de RCP no está cargada en esta pantalla'};
+  const accion=String((args&&args.accion)||'').toLowerCase();
+  try{
+    if(accion==='iniciar'){
+      if(rcp.activa&&rcp.activa())return {ok:true,estado:'Ya hay una parada en marcha: metrónomo y registro siguen corriendo.'};
+      rcp.iniciarParada();
+      return {ok:true,estado:'Parada iniciada: metrónomo de compresiones, cronómetro y registro en marcha. Los avisos de cada 2 minutos los da la propia herramienta.'};
+    }
+    if(accion==='anotar'){
+      if(!(rcp.activa&&rcp.activa()))return {error:'No hay ninguna parada iniciada: hay que iniciar la parada primero'};
+      const ev=String((args&&args.evento)||'').trim().slice(0,120);
+      if(!ev)return {error:'Falta el evento a anotar'};
+      rcp.anotar(ev);
+      return {ok:true,estado:'Anotado con su hora: '+ev};
+    }
+    return {error:'Acción no reconocida (iniciar o anotar)'};
+  }catch(e){
+    return {error:e.message||String(e)};
+  }
+}
+
 async function executeToolCall(toolCall){
   const responses=[];
   for(const fc of (toolCall.functionCalls||[])){
@@ -638,6 +680,8 @@ async function executeToolCall(toolCall){
         result=searchINurse(args.query||'',args.focus||'all',args.limit||5);
       }else if(fc.name==='buscar_cercanos'){
         result=await buscarCercanosLive(args.tipo||'all');
+      }else if(fc.name==='rcp_parada'){
+        result=rcpDesdeLive(args);
       }else if(fc.name==='update_case'){
         result=updateCaseFromTool(args);
       }else{
