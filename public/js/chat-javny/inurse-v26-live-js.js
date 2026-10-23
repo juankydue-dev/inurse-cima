@@ -578,6 +578,7 @@ Durante un caso:
 7. No inventes dosis, concentraciones, energías, tiempos ni contraindicaciones. Solo menciona una dosis si aparece expresamente en la fuente devuelta, leyéndola despacio y diciendo que debe verificarse con la ficha técnica/protocolo vigente.
 7b. Si preguntan por el hospital, las urgencias o el desfibrilador (DEA) más cercano, llama a buscar_cercanos y lee SOLO lo que devuelva: nombre y distancia, y la dirección si la piden. Si devuelve un error o no hay ubicación, dilo tal cual y sigue con el caso. Nunca digas un centro, una dirección ni una distancia que no vengan de la herramienta.
 7c. Si el usuario pide iniciar la parada, el metrónomo o el ritmo de compresiones, llama a rcp_parada con accion "iniciar". Si durante una parada canta un evento (descarga, adrenalina, intubación…), llama a rcp_parada con accion "anotar" pasando el evento tal como lo dijo. Esa herramienta solo cronometra y registra en el dispositivo: la orientación clínica sigue saliendo de search_inurse y de estas reglas.
+7d. Si el usuario pide el traspaso, el relevo o el SBAR, llama a traspaso_sbar rellenando los cuatro campos ÚNICAMENTE con lo dicho en la conversación, como la regla 9b: nada inferido, y lo no referido se deja vacío. Tras llamarla, di solo que el traspaso está en pantalla, sin repetirlo entero.
 8. Llama a update_case cuando cambie la prioridad, aparezca una señal de alarma, haya nuevas actuaciones o falten datos.
 9. No repitas nombres, DNI, números de historia, teléfonos ni otros identificadores.
 9b. En el panel del caso (update_case) recoge SÓLO lo que el usuario ha dicho, nunca lo inferido. Si dice "mi padre", el resumen es "padre del usuario", no "varón" ni una edad: el sexo y la edad no se han dicho. No completes sexo, edad, antecedentes ni diagnóstico a partir de suposiciones; deja el hueco o ponlo en datos pendientes. Lo que se muestra en pantalla se lee como dato del caso, y un dato inventado es peor que un hueco.
@@ -625,6 +626,19 @@ const tools=[{
       }
     },
     {
+      name:'traspaso_sbar',
+      description:'Muestra en pantalla el traspaso SBAR del caso para el equipo que llega, compuesto ÚNICAMENTE con lo dicho en la conversación (nada inferido; lo no referido se deja vacío). La pantalla permite leerlo, escucharlo, copiarlo y compartirlo, y adjunta sola el registro de la parada con sus horas si lo hay.',
+      parameters:{
+        type:'OBJECT',
+        properties:{
+          situacion:{type:'STRING',description:'S · Situación: qué pasa ahora y prioridad, con las palabras dichas.'},
+          antecedentes:{type:'STRING',description:'B · Antecedentes referidos del paciente. Vacío si no se han dicho.'},
+          evaluacion:{type:'STRING',description:'A · Evaluación: constantes y hallazgos DICHOS, y señales de alarma.'},
+          recomendacion:{type:'STRING',description:'R · Recomendación: qué se pide al equipo que llega, según lo hablado.'}
+        }
+      }
+    },
+    {
       name:'update_case',
       description:'Actualiza el panel temporal del caso para mostrar prioridad, resumen, actuaciones inmediatas, datos pendientes y señales de alarma.',
       parameters:{
@@ -640,6 +654,27 @@ const tools=[{
     }
   ]
 }];
+
+/* Herramienta traspaso_sbar (decisión de Juanky): puente al visor LOCAL del
+   traspaso (P41, window.EnferixSBAR). El modelo la llama solo cuando el
+   usuario pide el relevo; aquí no se redacta nada, solo se pinta lo que el
+   modelo compuso con lo dicho (regla 9b). */
+function sbarDesdeLive(args){
+  const sbar=window.EnferixSBAR;
+  if(!sbar)return {error:'El visor del traspaso no está cargado en esta pantalla'};
+  try{
+    const a=args||{};
+    sbar.mostrar({
+      situacion:String(a.situacion||'').slice(0,600),
+      antecedentes:String(a.antecedentes||'').slice(0,600),
+      evaluacion:String(a.evaluacion||'').slice(0,600),
+      recomendacion:String(a.recomendacion||'').slice(0,600)
+    });
+    return {ok:true,estado:'Traspaso SBAR mostrado en pantalla, con botones de escuchar, copiar y compartir.'};
+  }catch(e){
+    return {error:e.message||String(e)};
+  }
+}
 
 /* Herramienta rcp_parada (decisión de Juanky): puente a la herramienta LOCAL
    de RCP (P40, window.EnferixRCP). El modelo la lanza si la conversación lo
@@ -682,6 +717,8 @@ async function executeToolCall(toolCall){
         result=await buscarCercanosLive(args.tipo||'all');
       }else if(fc.name==='rcp_parada'){
         result=rcpDesdeLive(args);
+      }else if(fc.name==='traspaso_sbar'){
+        result=sbarDesdeLive(args);
       }else if(fc.name==='update_case'){
         result=updateCaseFromTool(args);
       }else{
