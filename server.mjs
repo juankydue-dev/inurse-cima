@@ -758,7 +758,7 @@ ESTRUCTURA SBAR:`;
       const rawBody = await readBodyLarge(req);
       const parsed = rawBody ? JSON.parse(rawBody) : {};
       const tipo = clean(parsed.tipo, 8);
-      if (tipo !== "ecg" && tipo !== "rx") return json(res, 400, { error: "Tipo de imagen no reconocido" });
+      if (tipo !== "ecg" && tipo !== "rx" && tipo !== "lab") return json(res, 400, { error: "Tipo de imagen no reconocido" });
       const data = typeof parsed.data === "string" ? parsed.data : "";
       // Serie de imágenes del mismo estudio (varias proyecciones, o los cortes
       // extraídos de un vídeo). Solo datos saneados: base64 y su media type.

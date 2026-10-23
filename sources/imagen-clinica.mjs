@@ -76,6 +76,22 @@ RESPUESTA OBLIGATORIA, POR APARTADOS:
 
 Si la imagen no permite valorar un apartado, indícalo expresamente. Responde en español con títulos claros y suficiente detalle; no seas escueta ni termines a mitad. Termina con: "Lectura orientativa y educativa. No sustituye el informe radiológico, la imagen original ni la valoración clínica del equipo responsable."`;
 
+
+const GUION_ANALITICA = `Eres Javny, asistente experta en interpretación de analíticas de laboratorio para profesionales de enfermería. Lee la imagen de la analítica y redacta un informe estructurado, prudente y útil. Transcribe ÚNICAMENTE los valores que se vean en la imagen; si un valor, una unidad o un rango de referencia no se lee con claridad, dilo expresamente en vez de suponerlo. No inventes valores ni rangos.
+
+RESPUESTA OBLIGATORIA, POR APARTADOS:
+1. Identificación del estudio: tipo de analítica (hemograma, bioquímica, coagulación, gasometría, orina, otras), fecha si consta, y calidad y legibilidad de la imagen.
+2. Valores alterados: cada parámetro fuera de rango con su valor, su unidad y el rango de referencia QUE APAREZCA en la propia analítica, marcando si está alto o bajo. Si el rango no aparece en la imagen, dilo y valóralo con prudencia según los rangos habituales de laboratorio, dejando claro que son orientativos.
+3. Valores críticos: destaca los que supongan riesgo inmediato y exijan comunicación urgente al equipo médico.
+4. Valores normales relevantes: los que ayuden a descartar o acotar el cuadro.
+5. Interpretación integrada: qué patrones sugiere el conjunto (por ejemplo, perfil compatible con anemia ferropénica, deterioro de función renal, colestasis, proceso infeccioso-inflamatorio), como ORIENTACIÓN diagnóstica con su diferencial breve, nunca como diagnóstico definitivo.
+6. Correlación clínica: qué datos del paciente harían falta para afinar (clínica, medicación, antecedentes) y qué pruebas complementarias ayudarían.
+7. Manejo orientativo: líneas generales de actuación y tratamiento que la evidencia asocia a estos hallazgos, SIN dosis ni pautas concretas: las dosis exactas corresponden a la prescripción y al protocolo del centro.
+8. Intervenciones de enfermería: monitorización y vigilancia concreta, cuidados, preparación de pruebas, seguridad del paciente y cuándo avisar al equipo médico.
+9. Comparación con el contexto aportado: confirma, corrige o matiza la sospecha del profesional explicando los motivos.
+
+Si algún apartado no es valorable con la imagen, indícalo expresamente. Responde en español, con títulos claros y sin inventar datos. Termina con: "Informe orientativo y educativo a partir de la imagen aportada. No sustituye el informe de laboratorio original ni la valoración clínica del equipo responsable."`;
+
 const MODOS = {
   ecg: {
     sistema: GUION_ECG,
@@ -94,6 +110,18 @@ const MODOS = {
         ? `Las ${n} imágenes son CORTES CONSECUTIVOS extraídos de un vídeo de un estudio de imagen (por ejemplo un TAC grabado en pantalla): trátalas como una secuencia ordenada del mismo estudio, no como fotos sueltas.`
         : `Las ${n} imágenes pertenecen al MISMO paciente y al mismo estudio o momento clínico (por ejemplo, proyecciones frente y lateral, o comparativa de ambos lados).`;
       const encargo = `Realiza UNA ÚNICA lectura radiológica de conjunto siguiendo la sistemática: integra lo que aportan todas las imágenes, compáralas entre sí cuando proceda, y al describir cada hallazgo di en qué imagen se ve ("Imagen 2", "cortes 4-6"). Si alguna imagen no es valorable, dilo y sigue con las demás. No repitas la sistemática completa imagen por imagen.`;
+      return (ctx ? `Contexto o sospecha aportada: "${ctx}". ` : "") + origen + " " + encargo;
+    }
+  },
+  lab: {
+    sistema: GUION_ANALITICA,
+    conContexto: ctx => `Contexto o sospecha aportada: "${ctx}". Redacta el informe completo de la analítica.`,
+    sinContexto: "Redacta el informe completo de esta analítica.",
+    // Una analítica puede llegar en varias páginas o fotos parciales del mismo
+    // informe: el resultado es UN único informe integrado, no uno por foto.
+    serie: (ctx, n) => {
+      const origen = `Las ${n} imágenes son páginas o secciones de la MISMA analítica del mismo paciente.`;
+      const encargo = `Redacta UN ÚNICO informe integrando todos los valores visibles en el conjunto; si un parámetro aparece repetido, usa el más legible y dilo. Señala en qué imagen está un hallazgo solo cuando ayude a localizarlo. Si alguna imagen no es legible, dilo y sigue con las demás.`;
       return (ctx ? `Contexto o sospecha aportada: "${ctx}". ` : "") + origen + " " + encargo;
     }
   }
@@ -128,12 +156,14 @@ export async function analizarImagen({ tipo, data, media, contexto, imagenes, or
   const modo = MODOS[tipo];
   if (!modo) throw new Error(`Tipo de imagen no reconocido: ${tipo}`);
 
-  // La serie solo existe para rx; en ecg (o con una serie de una sola imagen)
-  // se sigue por el camino de siempre con la primera.
+  // En ecg (o con una serie de una sola imagen) se sigue por el camino de
+  // siempre con la primera.
   let serie = Array.isArray(imagenes)
     ? imagenes.filter(i => i && typeof i.data === "string" && i.data).slice(0, MAX_IMAGENES_SERIE)
     : [];
-  if (tipo !== "rx" && serie.length > 1) serie = serie.slice(0, 1);
+  // Solo los modos que definen instrucción de serie aceptan varias imágenes
+  // (rx: proyecciones o cortes de vídeo; lab: páginas de la misma analítica).
+  if (!modo.serie && serie.length > 1) serie = serie.slice(0, 1);
 
   const ctx = String(contexto || "").trim();
 
