@@ -799,7 +799,7 @@ export async function orchestrateStream({ question, context: clientContext, hist
   onEvent({ type: "phase", phase: "searching" });
 
   const timings = [];
-  const busquedas = searchAllSources(question, timings).catch(err => {
+  const busquedas = searchAllSources(question, timings, evidenceQueries || []).catch(err => {
     console.error("[Orquestador] Las búsquedas externas fallaron:", err instanceof Error ? err.message : err);
     return null;
   });
