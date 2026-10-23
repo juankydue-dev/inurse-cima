@@ -41,6 +41,12 @@
       errMax: 'Máximo ' + MAX_FOTOS + ' páginas por informe',
       errPrimero: 'Primero añade la foto de la analítica',
       errAnalisis: 'No se ha podido leer la analítica: ',
+      escuchar: 'Escuchar', parar: 'Parar',
+      compartir: 'Compartir', video: 'Vídeo relacionado', guias: 'Guías relacionadas', javny: 'Revisar con Javny',
+      compartido: 'Contenido copiado', noCompartir: 'Compartir no está disponible en este navegador',
+      videoQ: 'interpretación analítica de laboratorio enfermería',
+      guiasQ: 'analítica laboratorio hemograma bioquímica electrolitos función renal',
+      tituloInforme: 'Informe de analítica',
       menu: 'Analíticas'
     },
     ca: {
@@ -62,6 +68,12 @@
       errMax: 'Màxim ' + MAX_FOTOS + ' pàgines per informe',
       errPrimero: 'Primer afegeix la foto de l’analítica',
       errAnalisis: 'No s’ha pogut llegir l’analítica: ',
+      escuchar: 'Escolta', parar: 'Atura',
+      compartir: 'Comparteix', video: 'Vídeo relacionat', guias: 'Guies relacionades', javny: 'Revisa amb Javny',
+      compartido: 'Contingut copiat', noCompartir: 'Compartir no està disponible en aquest navegador',
+      videoQ: 'interpretación analítica de laboratorio enfermería',
+      guiasQ: 'analítica laboratorio hemograma bioquímica electrolitos función renal',
+      tituloInforme: 'Informe d’analítica',
       menu: 'Analítiques'
     }
   };
@@ -85,6 +97,7 @@
   /* ── Estado ──────────────────────────────────────────────────────────────── */
   var fotos = [];   // {src(dataURL), w, h}
   var overlay = null, enviando = false;
+  var ultimoInforme = '';  // texto plano del último informe, para escuchar/compartir
 
   /* ── Reescalado en canvas (legibilidad primero: 2048 px, calidad 0,88) ──── */
   function procesar(dataURL){
@@ -158,6 +171,11 @@
       else if(acc === 'elegir' || acc === 'anadir') overlay.querySelector('#p38File').click();
       else if(acc === 'quitar'){ fotos.splice(Number(b.getAttribute('data-p38-i')), 1); pintar(); }
       else if(acc === 'enviar') enviar();
+      else if(acc === 'escuchar') escuchar(b);
+      else if(acc === 'compartir') compartir();
+      else if(acc === 'video') video();
+      else if(acc === 'guias') guias();
+      else if(acc === 'javny'){ if(typeof window.EnferixOpenJavnyContext === 'function'){ cerrar(); window.EnferixOpenJavnyContext(t('tituloInforme'), ultimoInforme); } }
     });
     overlay.querySelector('#p38File').addEventListener('change', function(){
       cargar(this.files); this.value = '';
@@ -192,7 +210,15 @@
       p = p.trim(); if(!p) return '';
       return '<p>' + p.replace(/\n/g, '<br>') + '</p>';
     }).join('');
-    return '<div class="p38-res-tit">' + esc(t('informe')) + '</div><div class="p38-ans">' + html + '</div>';
+    var acciones =
+      '<div class="p38-acciones">'
+      + '<button type="button" data-p38="escuchar">🔊 ' + esc(t('escuchar')) + '</button>'
+      + '<button type="button" data-p38="compartir">📤 ' + esc(t('compartir')) + '</button>'
+      + '<button type="button" data-p38="video">🎬 ' + esc(t('video')) + '</button>'
+      + '<button type="button" data-p38="guias">📚 ' + esc(t('guias')) + '</button>'
+      + (typeof window.EnferixOpenJavnyContext === 'function' ? '<button type="button" data-p38="javny">✨ ' + esc(t('javny')) + '</button>' : '')
+      + '</div>';
+    return '<div class="p38-res-tit">' + esc(t('informe')) + '</div><div class="p38-ans">' + html + '</div>' + acciones;
   }
 
   function enviar(){
@@ -217,6 +243,7 @@
       return r.json().catch(function(){ return {}; }).then(function(d){
         if(!r.ok) throw new Error(d.error || ('El servidor respondió HTTP ' + r.status));
         if(!d.answer) throw new Error('Respuesta vacía del servidor.');
+        ultimoInforme = String(d.answer || '');
         res.innerHTML = render(d.answer);
         res.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       });
@@ -230,8 +257,46 @@
     });
   }
 
+  /* ── Acciones del informe (misma botonera que Electro y Rayos X) ───────── */
+  var vozActiva = null;
+  function pararVoz(){
+    try { window.speechSynthesis.cancel(); } catch(e){}
+    if(vozActiva && vozActiva.btn) vozActiva.btn.textContent = '🔊 ' + t('escuchar');
+    vozActiva = null;
+  }
+  function escuchar(btn){
+    if(!ultimoInforme) return;
+    if(vozActiva){ pararVoz(); return; }
+    if(!('speechSynthesis' in window)){ toast(t('noCompartir')); return; }
+    var u = new SpeechSynthesisUtterance(ultimoInforme.slice(0, 9000));
+    u.lang = detectLang() === 'ca' ? 'ca-ES' : 'es-ES';
+    u.onend = pararVoz; u.onerror = pararVoz;
+    vozActiva = { u: u, btn: btn };
+    btn.textContent = '⏹ ' + t('parar');
+    window.speechSynthesis.speak(u);
+  }
+  function compartir(){
+    if(!ultimoInforme) return;
+    var payload = { title: 'Enferix · ' + t('tituloInforme'), text: ultimoInforme.slice(0, 9000) };
+    if(navigator.share){ navigator.share(payload).catch(function(e){ if(e && e.name !== 'AbortError') toast(t('noCompartir')); }); return; }
+    if(navigator.clipboard){ navigator.clipboard.writeText(payload.title + '\n\n' + payload.text).then(function(){ toast(t('compartido')); }).catch(function(){ toast(t('noCompartir')); }); return; }
+    toast(t('noCompartir'));
+  }
+  function video(){
+    var ctx = (overlay && overlay.querySelector('#p38Ctx').value || '').trim();
+    var q = (ctx || t('videoQ')) + ' formación enfermería';
+    var w = window.open('https://www.youtube.com/results?search_query=' + encodeURIComponent(q), '_blank', 'noopener,noreferrer');
+    if(!w) toast(t('noCompartir'));
+  }
+  function guias(){
+    cerrar();
+    var input = document.getElementById('search');
+    if(input){ input.value = t('guiasQ'); input.dispatchEvent(new Event('input', { bubbles: true })); }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   function abrir(){ construir(); pintar(); overlay.classList.add('on'); }
-  function cerrar(){ if(overlay) overlay.classList.remove('on'); }
+  function cerrar(){ if(overlay) overlay.classList.remove('on'); pararVoz(); }
   document.addEventListener('keydown', function(e){
     if(e.key === 'Escape' && overlay && overlay.classList.contains('on')){ e.stopPropagation(); cerrar(); }
   }, true);

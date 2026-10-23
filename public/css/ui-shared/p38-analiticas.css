@@ -94,6 +94,13 @@
   padding:12px; border-radius:12px; border:1px solid rgba(248,113,113,.4);
   background:rgba(248,113,113,.08); color:#fca5a5; font-size:13px;
 }
+.p38-acciones{ display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+.p38-acciones button{
+  padding:8px 12px; border-radius:12px; cursor:pointer; font-size:12px; font-weight:700;
+  border:1px solid rgba(148,163,184,.25); background:rgba(148,163,184,.08); color:#c7d4f2;
+}
+.p38-acciones button:hover{ border-color:#33B6A6; color:#33B6A6; }
+
 .p38-cargando{ color:#c7d4f2; font-size:13px; padding:8px 2px; }
 .p38-dots span{
   display:inline-block; width:5px; height:5px; margin-left:4px; border-radius:50%;
