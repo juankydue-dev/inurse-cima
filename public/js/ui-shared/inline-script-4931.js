@@ -1468,7 +1468,14 @@
  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!q('#ccWrap').classList.contains('hide'))hideChat()});
  q('#ccGuide').onclick=hideChat;
  q('#ccFab').onclick=showChat;
- q('#ccNew').onclick=function(){ if(messages.length&&!confirm('¿Empezar una conversación nueva? Se borrará la actual.'))return; messages=[];jset(CHATK,messages);paint(); };
+ q('#ccNew').onclick=function(){ if(messages.length&&!confirm('¿Empezar una conversación nueva? La actual queda guardada en Conversaciones (🗂).'))return; messages=[];jset(CHATK,messages);paint(); };
+ /* P37 · Conversaciones guardadas: API mínima para el cajón de conversaciones
+    (p37-chat-conversaciones.js). Solo leer y cargar el hilo en pantalla; el
+    archivo y su interfaz viven en ese componente, no aquí. */
+ window.EnferixChat={
+  mensajes:function(){return messages.slice()},
+  cargar:function(arr){messages=Array.isArray(arr)?arr.slice():[];jset(CHATK,messages);paint();}
+ };
 
  /* ---- ajustes ---- */
  function openSet(){q('#ccKey').value=lget(KEYK,'');q('#v20Backend').value=lget(BACKENDK,'');q('#ccVoiceSw').classList.toggle('on',autoVoice);q('#v22VerifySw').classList.toggle('on',verifyEnabled);q('#v23HandsFreeSw').classList.toggle('on',handsFree);q('#v23WakeSw').classList.toggle('on',requireWake);q('#ccSetModal').classList.add('on');var r=q('#v20TestResult');if(r){r.className='v20-test-result';r.textContent=''}}
