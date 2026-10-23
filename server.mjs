@@ -573,7 +573,13 @@ const server = http.createServer(async (req, res) => {
         model: clean(parsed.model, 60) || undefined,
         caseMemory: Array.isArray(parsed.caseMemory) ? parsed.caseMemory.slice(-6) : [],
         route: parsed.route || {},
-        attachment: parsed.attachment || null
+        attachment: parsed.attachment || null,
+        // Términos editoriales de búsqueda (evidenceQuery de las fichas que el
+        // navegador ha recuperado): texto plano acotado, solo son consultas a
+        // las fuentes externas — no entran en el prompt.
+        evidenceQueries: Array.isArray(parsed.evidenceQueries)
+          ? parsed.evidenceQueries.map(t => clean(t, 120)).filter(Boolean).slice(0, 3)
+          : []
       });
       return json(res, 200, result);
     }
@@ -619,6 +625,12 @@ const server = http.createServer(async (req, res) => {
           // Sólo lo pide la consulta de portada: respuesta corta y al grano. El
           // chat del avatar no lo envía y mantiene su desarrollo largo de siempre.
           conciso: parsed.conciso === true,
+          // Términos editoriales de búsqueda (evidenceQuery de las fichas que el
+          // navegador ha recuperado): texto plano acotado, solo son consultas a
+          // las fuentes externas — no entran en el prompt.
+          evidenceQueries: Array.isArray(parsed.evidenceQueries)
+            ? parsed.evidenceQueries.map(t => clean(t, 120)).filter(Boolean).slice(0, 3)
+            : [],
           // Coordenadas que el navegador comparte (con consentimiento ya dado)
           // para la herramienta centros_cercanos. El modelo nunca las ve como
           // texto ni puede inventarlas: solo las consume la herramienta.

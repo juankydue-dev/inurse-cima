@@ -252,6 +252,12 @@ body.esc35-lock{overflow:hidden}
   .esc35-shell{border-radius:0;border:none;max-width:none}
   .esc35-hero{flex-direction:column;align-items:flex-start}
   .esc35-row{flex-direction:column;align-items:stretch}
+  /* En columna, el `flex:1 1 240px` de la fila horizontal deja de ser un ANCHO
+     y pasa a ser una ALTURA: cada enunciado ocupaba 240 px para un texto de 19,
+     y una escala de seis apartados se iba a mil quinientos píxeles de hueco,
+     justo en el móvil, que es donde se usa. El `min-width:200px` tampoco pinta
+     nada ya en vertical, y en una pantalla estrecha sólo puede desbordar. */
+  .esc35-row-label{flex:0 0 auto;min-width:0}
   .esc35-seg{justify-content:flex-start}
   .esc35-select{max-width:none;width:100%}
   .esc35-result-main b,.esc35-result-sec b{font-size:23px}
