@@ -85,7 +85,17 @@ const MODOS = {
   rx: {
     sistema: GUION_RX,
     conContexto: ctx => `Contexto o sospecha aportada: "${ctx}". Realiza el análisis radiológico completo.`,
-    sinContexto: "Realiza el análisis radiológico completo de esta imagen."
+    sinContexto: "Realiza el análisis radiológico completo de esta imagen.",
+    // Una serie: varias proyecciones del mismo paciente, o los cortes extraídos
+    // de un vídeo (un TAC que llega grabado, por ejemplo). La lectura es UNA,
+    // de conjunto: compara imágenes entre sí y localiza cada hallazgo.
+    serie: (ctx, n, esVideo) => {
+      const origen = esVideo
+        ? `Las ${n} imágenes son CORTES CONSECUTIVOS extraídos de un vídeo de un estudio de imagen (por ejemplo un TAC grabado en pantalla): trátalas como una secuencia ordenada del mismo estudio, no como fotos sueltas.`
+        : `Las ${n} imágenes pertenecen al MISMO paciente y al mismo estudio o momento clínico (por ejemplo, proyecciones frente y lateral, o comparativa de ambos lados).`;
+      const encargo = `Realiza UNA ÚNICA lectura radiológica de conjunto siguiendo la sistemática: integra lo que aportan todas las imágenes, compáralas entre sí cuando proceda, y al describir cada hallazgo di en qué imagen se ve ("Imagen 2", "cortes 4-6"). Si alguna imagen no es valorable, dilo y sigue con las demás. No repitas la sistemática completa imagen por imagen.`;
+      return (ctx ? `Contexto o sospecha aportada: "${ctx}". ` : "") + origen + " " + encargo;
+    }
   }
 };
 
@@ -97,26 +107,62 @@ export function imagenDisponible() {
   return proveedorDisponible();
 }
 
+// Tope de imágenes por serie. 14 cubre el muestreo de un vídeo largo y queda
+// por debajo del límite de cuerpo del endpoint (readBodyLarge, 8 MB) con los
+// JPEG reescalados que manda el cliente.
+export const MAX_IMAGENES_SERIE = 14;
+
 /**
  * @param {object} peticion
  * @param {"ecg"|"rx"} peticion.tipo
- * @param {string} peticion.data       imagen en base64, SIN el prefijo data:
- * @param {string} peticion.media      image/jpeg, png, gif o webp
+ * @param {string} [peticion.data]     imagen en base64, SIN el prefijo data:
+ * @param {string} [peticion.media]    image/jpeg, png, gif o webp
+ * @param {Array<{data:string, media?:string}>} [peticion.imagenes]
+ *        serie de imágenes del MISMO estudio (solo rx). Si viene, manda sobre
+ *        data/media. Lectura única de conjunto.
+ * @param {boolean} [peticion.origenVideo] la serie son cortes extraídos de un vídeo
  * @param {string} [peticion.contexto] hipótesis o sospecha que aporta quien consulta
  * @returns {Promise<{answer:string, proveedor:string}>}
  */
-export async function analizarImagen({ tipo, data, media, contexto }) {
+export async function analizarImagen({ tipo, data, media, contexto, imagenes, origenVideo }) {
   const modo = MODOS[tipo];
   if (!modo) throw new Error(`Tipo de imagen no reconocido: ${tipo}`);
-  if (!data) throw new Error("Falta la imagen.");
 
-  const mediaType = MEDIA_VALIDOS.has(media) ? media : "image/jpeg";
+  // La serie solo existe para rx; en ecg (o con una serie de una sola imagen)
+  // se sigue por el camino de siempre con la primera.
+  let serie = Array.isArray(imagenes)
+    ? imagenes.filter(i => i && typeof i.data === "string" && i.data).slice(0, MAX_IMAGENES_SERIE)
+    : [];
+  if (tipo !== "rx" && serie.length > 1) serie = serie.slice(0, 1);
+
   const ctx = String(contexto || "").trim();
+
+  if (serie.length > 1) {
+    const bloques = [];
+    serie.forEach((img, i) => {
+      const mediaType = MEDIA_VALIDOS.has(img.media) ? img.media : "image/jpeg";
+      bloques.push({ type: "text", text: `Imagen ${i + 1} de ${serie.length}:` });
+      bloques.push({ type: "image", source: { type: "base64", media_type: mediaType, data: img.data } });
+    });
+    bloques.push({ type: "text", text: modo.serie(ctx, serie.length, !!origenVideo) });
+    const { texto, proveedor } = await generarConFallback({
+      sistema: modo.sistema,
+      contenido: bloques,
+      maxOutputTokens: 6000,
+      etiqueta: `Imagen ${tipo} ×${serie.length}`
+    });
+    return { answer: texto, proveedor };
+  }
+
+  const unica = serie.length === 1 ? serie[0] : { data, media };
+  if (!unica.data) throw new Error("Falta la imagen.");
+
+  const mediaType = MEDIA_VALIDOS.has(unica.media) ? unica.media : "image/jpeg";
   const instruccion = ctx ? modo.conContexto(ctx) : modo.sinContexto;
   const { texto, proveedor } = await generarConFallback({
     sistema: modo.sistema,
     contenido: [
-      { type: "image", source: { type: "base64", media_type: mediaType, data } },
+      { type: "image", source: { type: "base64", media_type: mediaType, data: unica.data } },
       { type: "text", text: instruccion }
     ],
     maxOutputTokens: 5000,
