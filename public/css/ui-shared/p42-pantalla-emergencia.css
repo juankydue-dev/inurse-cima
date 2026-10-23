@@ -8,7 +8,7 @@
 .p42-btn:hover{ background:rgba(248,113,113,.2); }
 
 .p42-pantalla{
-  position:fixed; inset:0; z-index:18500; display:none; flex-direction:column;
+  position:fixed; inset:0; z-index:46000; display:none; flex-direction:column; /* por encima de Javny Live (45000) */
   background:#050814;
   padding:max(24px,env(safe-area-inset-top)) 20px max(20px,env(safe-area-inset-bottom));
 }

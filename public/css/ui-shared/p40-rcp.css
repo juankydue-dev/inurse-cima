@@ -10,7 +10,7 @@
 .fab-rcp:hover{ transform:translateY(-2px); box-shadow:0 14px 30px rgba(248,113,113,.3); }
 
 .p40-overlay{
-  position:fixed; inset:0; z-index:16500; display:none;
+  position:fixed; inset:0; z-index:46200; display:none; /* por encima de Javny Live (45000) */
   background:rgba(5,8,20,.78); backdrop-filter:blur(4px);
   align-items:center; justify-content:center; padding:18px 16px;
 }
