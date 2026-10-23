@@ -758,7 +758,7 @@ ESTRUCTURA SBAR:`;
       const rawBody = await readBodyLarge(req);
       const parsed = rawBody ? JSON.parse(rawBody) : {};
       const tipo = clean(parsed.tipo, 8);
-      if (tipo !== "ecg" && tipo !== "rx" && tipo !== "lab") return json(res, 400, { error: "Tipo de imagen no reconocido" });
+      if (tipo !== "ecg" && tipo !== "rx" && tipo !== "lab" && tipo !== "caso") return json(res, 400, { error: "Tipo de imagen no reconocido" });
       const data = typeof parsed.data === "string" ? parsed.data : "";
       // Serie de imágenes del mismo estudio (varias proyecciones, o los cortes
       // extraídos de un vídeo). Solo datos saneados: base64 y su media type.
@@ -766,7 +766,7 @@ ESTRUCTURA SBAR:`;
         ? parsed.imagenes
             .filter(i => i && typeof i.data === "string" && i.data.length > 0)
             .slice(0, 14)
-            .map(i => ({ data: i.data, media: clean(i.media, 40) || "image/jpeg" }))
+            .map(i => ({ data: i.data, media: clean(i.media, 40) || "image/jpeg", rol: (i.rol === "rx" || i.rol === "lab" || i.rol === "ecg") ? i.rol : undefined }))
         : [];
       if (!data && imagenes.length === 0) return json(res, 400, { error: "Falta la imagen" });
       const { answer, proveedor } = await analizarImagen({

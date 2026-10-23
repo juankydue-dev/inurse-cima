@@ -92,6 +92,23 @@ RESPUESTA OBLIGATORIA, POR APARTADOS:
 
 Si algún apartado no es valorable con la imagen, indícalo expresamente. Responde en español, con títulos claros y sin inventar datos. Termina con: "Informe orientativo y educativo a partir de la imagen aportada. No sustituye el informe de laboratorio original ni la valoración clínica del equipo responsable."`;
 
+const GUION_CASO = `Eres Javny, asistente clínica experta de Enferix para profesionales de enfermería. Recibes varias pruebas del MISMO paciente (radiografías, páginas de analítica y/o electrocardiograma, cada una etiquetada arriba) y el contexto clínico aportado. Redacta UN informe de valoración integral, prudente y útil, con estilo de informe clínico. Describe únicamente lo visible en las imágenes; transcribe solo los valores que se lean con claridad; no inventes datos, valores, rangos ni hallazgos.
+
+RESPUESTA OBLIGATORIA, POR APARTADOS:
+1. Resumen del caso: pruebas recibidas, contexto clínico aportado y calidad y legibilidad de cada imagen.
+2. Electrocardiograma (si lo hay): lectura resumida — ritmo, frecuencia aproximada, hallazgos clave y alteraciones relevantes.
+3. Radiografía o imagen (si la hay): lectura resumida — técnica, hallazgos positivos y negativos relevantes.
+4. Analítica (si la hay): valores alterados con su unidad y el rango visible (alto o bajo), y valores críticos destacados.
+5. SÍNTESIS INTEGRADA: qué hallazgos concuerdan entre las pruebas y con la clínica aportada, cuáles discrepan, y qué cuadro global componen.
+6. Orientación diagnóstica: posibilidad principal y diagnóstico diferencial razonado, SIEMPRE como orientación, nunca como diagnóstico definitivo.
+7. Gravedad: hallazgos que exigen valoración o comunicación urgente al equipo médico.
+8. Qué falta para confirmar: datos clínicos y pruebas complementarias que afinarían la orientación.
+9. Manejo orientativo: líneas generales de actuación que la evidencia asocia al cuadro, SIN dosis ni pautas concretas: las dosis exactas corresponden a la prescripción y al protocolo del centro.
+10. Intervenciones de enfermería: monitorización y vigilancia concreta, cuidados, seguridad del paciente y cuándo avisar al equipo médico.
+11. Comparación con la sospecha aportada: confirma, corrige o matiza explicando los motivos.
+
+Si una prueba no está o un apartado no es valorable, dilo expresamente y sigue con el resto. Si el contexto clínico aportado es escaso, dilo y explica cuánto limita la orientación. Responde en español, con títulos claros y sin inventar datos. Termina con: "Informe de valoración integral orientativo y educativo a partir de las imágenes aportadas. No sustituye los informes originales ni la valoración clínica del equipo responsable."`;
+
 const MODOS = {
   ecg: {
     sistema: GUION_ECG,
@@ -123,6 +140,21 @@ const MODOS = {
       const origen = `Las ${n} imágenes son páginas o secciones de la MISMA analítica del mismo paciente.`;
       const encargo = `Redacta UN ÚNICO informe integrando todos los valores visibles en el conjunto; si un parámetro aparece repetido, usa el más legible y dilo. Señala en qué imagen está un hallazgo solo cuando ayude a localizarlo. Si alguna imagen no es legible, dilo y sigue con las demás.`;
       return (ctx ? `Contexto o sospecha aportada: "${ctx}". ` : "") + origen + " " + encargo;
+    }
+  },
+  caso: {
+    sistema: GUION_CASO,
+    conContexto: ctx => `Contexto clínico aportado: "${ctx}". Redacta el informe de valoración integral con las pruebas recibidas.`,
+    sinContexto: "Redacta el informe de valoración integral con las pruebas recibidas.",
+    serie: (ctx, n) => (ctx ? `Contexto clínico aportado: "${ctx}". ` : "")
+      + `Las ${n} imágenes etiquetadas arriba son pruebas del MISMO paciente. Redacta UN único informe de valoración integral siguiendo la sistemática, integrándolas todas.`,
+    // Cada imagen llega con su rol (radiografía, analítica, electro): la
+    // etiqueta se lo dice al modelo para que aplique a cada una su lectura.
+    etiqueta: (img, cont) => {
+      const roles = { rx: "RADIOGRAFÍA O IMAGEN", lab: "ANALÍTICA", ecg: "ELECTROCARDIOGRAMA" };
+      const rol = roles[img.rol] || "PRUEBA";
+      cont[rol] = (cont[rol] || 0) + 1;
+      return `${rol} ${cont[rol]}:`;
     }
   }
 };
@@ -167,18 +199,24 @@ export async function analizarImagen({ tipo, data, media, contexto, imagenes, or
 
   const ctx = String(contexto || "").trim();
 
-  if (serie.length > 1) {
+  // La valoración integral (caso) usa el camino etiquetado aunque llegue una
+  // sola prueba: la etiqueta del rol es parte de la instrucción.
+  if (serie.length > 1 || (serie.length === 1 && typeof modo.etiqueta === "function")) {
     const bloques = [];
+    const cont = {};
     serie.forEach((img, i) => {
       const mediaType = MEDIA_VALIDOS.has(img.media) ? img.media : "image/jpeg";
-      bloques.push({ type: "text", text: `Imagen ${i + 1} de ${serie.length}:` });
+      const etiqueta = typeof modo.etiqueta === "function"
+        ? modo.etiqueta(img, cont)
+        : `Imagen ${i + 1} de ${serie.length}:`;
+      bloques.push({ type: "text", text: etiqueta });
       bloques.push({ type: "image", source: { type: "base64", media_type: mediaType, data: img.data } });
     });
     bloques.push({ type: "text", text: modo.serie(ctx, serie.length, !!origenVideo) });
     const { texto, proveedor } = await generarConFallback({
       sistema: modo.sistema,
       contenido: bloques,
-      maxOutputTokens: 6000,
+      maxOutputTokens: tipo === "caso" ? 7000 : 6000,
       etiqueta: `Imagen ${tipo} ×${serie.length}`
     });
     return { answer: texto, proveedor };
