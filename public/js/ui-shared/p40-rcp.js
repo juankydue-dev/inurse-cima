@@ -233,6 +233,7 @@
     if(!parada) return;
     parada.eventos.push({ ms: Date.now() - parada.t0, hora: hora(), texto: texto });
     guardar();
+    try { if(navigator.vibrate) navigator.vibrate(40); } catch(e){}
     pintarEventos();
   }
   function iniciarParada(){
@@ -307,8 +308,17 @@
     } catch(e){ toast(t('vacio')); }
   }
   function pintarEventos(){
-    var n = overlay && overlay.querySelector('[data-p40-n]');
+    if(!overlay) return;
+    var n = overlay.querySelector('[data-p40-n]');
     if(n && parada) n.textContent = parada.eventos.length;
+    // Lista en vivo: cada toque tiene que VERSE apuntado al instante, con su
+    // minuto, o en plena parada parece que el botón no ha hecho nada.
+    var lista = overlay.querySelector('[data-p40-vivo]');
+    if(lista && parada){
+      lista.innerHTML = parada.eventos.slice(-5).reverse().map(function(e){
+        return '<li><span>' + esc(mmss(e.ms)) + '</span> ' + esc(e.texto) + '</li>';
+      }).join('');
+    }
   }
   function pintarParada(){
     if(!overlay) return;
@@ -361,6 +371,7 @@
       +         '<button type="button" class="p40-rosc" data-p40-ev="rosc">' + esc(ev.rosc) + '</button>'
       +         '<button type="button" data-p40-ev="otro">' + esc(ev.otro) + '</button>'
       +       '</div>'
+      +       '<ol class="p40-vivo" data-p40-vivo reversed></ol>'
       +       '<p class="p40-cuenta"><span data-p40-n>0</span> · <button type="button" class="p40-fin" data-p40="finalizar">' + esc(t('finalizar')) + '</button></p>'
       +     '</div>'
       +     '<button type="button" class="p40-ultimo" data-p40="ultimo">' + esc(t('ultimo')) + '</button>'
@@ -376,6 +387,8 @@
       if(m){ modo = m.getAttribute('data-p40-modo'); nCompresion = 0; enVentilacion = 0; pintarMetro(); return; }
       var evb = e.target.closest('[data-p40-ev]');
       if(evb){
+        evb.classList.add('p40-flash');
+        setTimeout(function(){ evb.classList.remove('p40-flash'); }, 450);
         var k = evb.getAttribute('data-p40-ev');
         if(k === 'otro'){
           var txt = prompt(t('otroPrompt')) || '';
