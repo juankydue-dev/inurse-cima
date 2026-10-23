@@ -1,0 +1,43 @@
+/* P36 · Herramientas de Javny (frente 3 de javny-inteligente)
+   Botones a las fichas/escalas que las herramientas del servidor enlazaron
+   bajo la respuesta del chat, y nota del indicador mientras se ejecuta una
+   herramienta. Paleta Enferix (teal #33B6A6). */
+
+.p36-enlaces{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:10px;
+}
+.p36-enlace{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:7px 12px;
+  border-radius:12px;
+  border:1px solid rgba(51,182,166,.45);
+  background:rgba(51,182,166,.12);
+  color:#E5EEFF;
+  font-size:12.5px;
+  line-height:1.2;
+  cursor:pointer;
+  text-align:left;
+  transition:background .15s ease,border-color .15s ease;
+}
+.p36-enlace:hover,
+.p36-enlace:focus-visible{
+  background:rgba(51,182,166,.22);
+  border-color:#33B6A6;
+  outline:none;
+}
+
+/* Nota bajo los puntos del indicador de escritura: "🔧 Comprobando…" */
+.cc-typing .p36-tool{
+  display:block;
+  width:100%;
+  color:#8aa0c8;
+  font-size:11px;
+  margin-top:2px;
+  white-space:nowrap;
+}
+.cc-typing{flex-wrap:wrap;}
