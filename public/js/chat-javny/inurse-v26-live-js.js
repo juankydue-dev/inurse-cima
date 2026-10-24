@@ -471,6 +471,41 @@ async function buscarCercanosLive(tipo){
     return {error:'La búsqueda de centros no respondió a tiempo. Dilo tal cual; no inventes ningún centro.'};
   }
 }
+/* Herramienta donde_estoy: misma familia y mismas garantías que
+   buscar_cercanos — la posición sale de EnferixNearby.getCoords (jamás
+   dispara el diálogo de permiso en mitad de una llamada de voz) y la
+   dirección sale del endpoint /api/donde-estoy (Nominatim/OSM). La dirección
+   es la del punto registrado más cercano: siempre se presenta como
+   aproximada, y sin dato la respuesta es decirlo, nunca inventarlo. */
+async function dondeEstoyLive(){
+  if(!window.EnferixNearby||!window.EnferixNearby.getCoords){
+    return {error:'La función de ubicación de la aplicación no está disponible en esta pantalla.'};
+  }
+  let coords=null;
+  try{coords=await window.EnferixNearby.getCoords({timeoutMs:8000});}catch(e){}
+  if(!coords){
+    return {error:'Sin ubicación: el usuario no ha concedido el permiso de ubicación a la aplicación (se activa desde Servicios cercanos). No digas ninguna calle, barrio ni municipio de memoria.'};
+  }
+  const ctrl=(typeof AbortController!=='undefined')?new AbortController():null;
+  const timer=ctrl?setTimeout(()=>ctrl.abort(),12000):null;
+  try{
+    const r=await fetch('/api/donde-estoy?lat='+coords.lat+'&lon='+coords.lon,ctrl?{signal:ctrl.signal}:{});
+    const d=await r.json().catch(()=>({}));
+    if(timer)clearTimeout(timer);
+    if(!r.ok)return {error:'La consulta de la dirección falló: '+((d&&d.error)||('HTTP '+r.status))+'. Dilo tal cual; no inventes ninguna dirección.'};
+    return {
+      direccion:d.direccion||'',
+      via:d.via||'',
+      barrio:d.barrio||'',
+      municipio:d.municipio||'',
+      provincia:d.provincia||'',
+      notice:'Dirección APROXIMADA (punto más cercano registrado en '+(d.fuente||'OpenStreetMap')+', no la posición exacta). Dila siempre como aproximada; no añadas nada que no esté aquí.'
+    };
+  }catch(e){
+    if(timer)clearTimeout(timer);
+    return {error:'La consulta de la dirección no respondió a tiempo. Dilo tal cual; no inventes ninguna dirección.'};
+  }
+}
 function updateCaseFromTool(args){
   if(args.priority)caseData.priority=String(args.priority).slice(0,300);
   if(args.patient_summary)caseData.patientSummary=String(args.patient_summary).slice(0,900);
@@ -579,6 +614,7 @@ Durante un caso:
 7b. Si preguntan por el hospital, las urgencias o el desfibrilador (DEA) más cercano, llama a buscar_cercanos y lee SOLO lo que devuelva: nombre y distancia, y la dirección si la piden. Si devuelve un error o no hay ubicación, dilo tal cual y sigue con el caso. Nunca digas un centro, una dirección ni una distancia que no vengan de la herramienta.
 7c. Si el usuario pide iniciar la parada, el metrónomo o el ritmo de compresiones, llama a rcp_parada con accion "iniciar". Si durante una parada canta un evento (descarga, adrenalina, intubación…), llama a rcp_parada con accion "anotar" pasando el evento tal como lo dijo. Esa herramienta solo cronometra y registra en el dispositivo: la orientación clínica sigue saliendo de search_inurse y de estas reglas.
 7d. Si el usuario pide el traspaso, el relevo o el SBAR, llama a traspaso_sbar rellenando los cuatro campos ÚNICAMENTE con lo dicho en la conversación, como la regla 9b: nada inferido, y lo no referido se deja vacío. Tras llamarla, di solo que el traspaso está en pantalla, sin repetirlo entero.
+7e. Si preguntan dónde están o por su ubicación, llama a donde_estoy y lee la dirección que devuelva diciendo SIEMPRE que es aproximada. Si devuelve un error o no hay ubicación, dilo tal cual y sigue con el caso. Nunca digas una calle, un barrio ni un municipio que no vengan de la herramienta.
 8. Llama a update_case cuando cambie la prioridad, aparezca una señal de alarma, haya nuevas actuaciones o falten datos.
 9. No repitas nombres, DNI, números de historia, teléfonos ni otros identificadores.
 9b. En el panel del caso (update_case) recoge SÓLO lo que el usuario ha dicho, nunca lo inferido. Si dice "mi padre", el resumen es "padre del usuario", no "varón" ni una edad: el sexo y la edad no se han dicho. No completes sexo, edad, antecedentes ni diagnóstico a partir de suposiciones; deja el hueco o ponlo en datos pendientes. Lo que se muestra en pantalla se lee como dato del caso, y un dato inventado es peor que un hueco.
@@ -611,6 +647,14 @@ const tools=[{
         properties:{
           tipo:{type:'STRING',enum:['hospital','aed','all'],description:'Qué buscar: hospitales, desfibriladores o ambos.'}
         }
+      }
+    },
+    {
+      name:'donde_estoy',
+      description:'Dirección aproximada del usuario (calle, barrio, municipio) a partir de la ubicación que ya compartió con la aplicación, vía OpenStreetMap. Si no hay permiso devuelve un error que hay que transmitir tal cual. La dirección se presenta SIEMPRE como aproximada; nunca inventes una calle ni un municipio.',
+      parameters:{
+        type:'OBJECT',
+        properties:{}
       }
     },
     {
@@ -715,6 +759,8 @@ async function executeToolCall(toolCall){
         result=searchINurse(args.query||'',args.focus||'all',args.limit||5);
       }else if(fc.name==='buscar_cercanos'){
         result=await buscarCercanosLive(args.tipo||'all');
+      }else if(fc.name==='donde_estoy'){
+        result=await dondeEstoyLive();
       }else if(fc.name==='rcp_parada'){
         result=rcpDesdeLive(args);
       }else if(fc.name==='traspaso_sbar'){

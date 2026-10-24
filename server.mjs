@@ -22,6 +22,7 @@ import {
 } from "./auth.mjs";
 import { validarTerminologia, invalidateNnnCache, nnnStats, nnnDictionary } from "./terminology-connector.mjs";
 import { buscarCercanos } from "./sources/cercanos.mjs";
+import { dondeEstoy } from "./sources/donde-estoy.mjs";
 import { medicineDetail } from "./sources/cima.mjs";
 import { TIPOS_DOCUMENTO, tipoValido } from "./sources/plantillas-proyectos.mjs";
 import { generarEstructura } from "./sources/proyectos-ia.mjs";
@@ -898,6 +899,25 @@ ESTRUCTURA SBAR:`;
         });
       } catch (err) {
         return json(res, 503, { error: err.message || "Error consultando las fuentes" });
+      }
+    }
+
+    // ── ¿Dónde estoy? (geocodificación inversa) ──
+    // Convierte las coordenadas del usuario en una dirección legible vía
+    // Nominatim (OpenStreetMap). La dirección es la del punto registrado más
+    // cercano en el mapa, por eso se presenta siempre como aproximada. La
+    // consume la herramienta donde_estoy de Javny (chat y Live).
+    if (u.pathname === "/api/donde-estoy" && req.method === "GET") {
+      const lat = Number(u.searchParams.get("lat"));
+      const lon = Number(u.searchParams.get("lon"));
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+        return json(res, 400, { error: "Coordenadas no válidas" });
+      }
+      try {
+        const r = await dondeEstoy(lat, lon);
+        return json(res, 200, { ...r, lat, lon, fetchedAt: new Date().toISOString() });
+      } catch (err) {
+        return json(res, 503, { error: err.message || "Error consultando el geocodificador" });
       }
     }
 

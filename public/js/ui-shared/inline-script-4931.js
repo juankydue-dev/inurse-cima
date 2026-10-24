@@ -1146,7 +1146,16 @@
  }
  function p36EnlacesPanel(enl){
   if(!enl||!enl.length)return '';
+  var p36ca=false;try{var p36l=document.documentElement.lang||localStorage.getItem('inurse_lang')||navigator.language||'es';p36ca=/^ca/i.test(p36l);}catch(err){}
   return '<div class="p36-enlaces">'+enl.map(function(e){
+   if(e.tipo==='mapa'){
+    /* La dirección de donde_estoy: pulsarla abre el mapa con la posición real
+       del usuario; el segundo botón la comparte (o la copia si el navegador
+       no sabe compartir). La URL la compone el servidor solo con las
+       coordenadas numéricas del propio usuario. */
+    return '<button type="button" class="p36-enlace" data-p36-tipo="mapa" data-p36-url="'+esc(e.url||'')+'">📍 '+esc(e.titulo)+'</button>'
+     +'<button type="button" class="p36-enlace" data-p36-tipo="mapa-compartir" data-p36-url="'+esc(e.url||'')+'" data-p36-texto="'+esc(e.titulo)+'">📤 '+(p36ca?'Comparteix la ubicació':'Compartir ubicación')+'</button>';
+   }
    return '<button type="button" class="p36-enlace" data-p36-tipo="'+esc(e.tipo)+'" data-p36-id="'+esc(e.id)+'">'
     +(e.tipo==='escala'?'🧮':'📄')+' '+esc(e.titulo)+'</button>';
   }).join('')+'</div>';
@@ -1155,6 +1164,14 @@
   node.querySelectorAll('.p36-enlace').forEach(function(b){
    b.onclick=function(){
     var tipo=b.getAttribute('data-p36-tipo'),id=b.getAttribute('data-p36-id');
+    if(tipo==='mapa'){var u=b.getAttribute('data-p36-url')||'';if(u)window.open(u,'_blank','noopener');return;}
+    if(tipo==='mapa-compartir'){
+     var mu=b.getAttribute('data-p36-url')||'',mt=b.getAttribute('data-p36-texto')||'';
+     var msg=mt+'\n'+mu;
+     if(navigator.share){navigator.share({text:msg}).catch(function(err){});}
+     else if(navigator.clipboard){navigator.clipboard.writeText(msg).then(function(){b.textContent='📋 Copiada';}).catch(function(err){});}
+     return;
+    }
     if(tipo==='ficha'&&typeof window.openDoc==='function')window.openDoc(id);
     else if(tipo==='escala'){
      if(window.EnferixEscalas&&window.EnferixEscalas.openCalc)window.EnferixEscalas.openCalc(id);
