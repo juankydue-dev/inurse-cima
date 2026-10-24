@@ -1248,10 +1248,17 @@ function renderEcg(answer){
    camino directo se ha retirado entero. */
 function escaparTexto(t){return String(t||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
 async function analizarImagenClinica(tipo, imagen, contexto){
+  /* La serie la prepara el laboratorio de imagen (inurse-rxecg-v04): varias
+     radiografías del mismo paciente, o los cortes extraídos de un vídeo (TAC
+     grabado en pantalla). Con una sola imagen el cuerpo no cambia. */
+  const serie = (tipo === 'rx' && Array.isArray(window.__rxSerie) && window.__rxSerie.length > 1) ? window.__rxSerie : null;
+  const body = serie
+    ? { tipo, imagenes: serie, origenVideo: window.__rxSerieVideo === true, contexto: contexto || '' }
+    : { tipo, data: imagen.data, media: imagen.media, contexto: contexto || '' };
   const r = await fetch('/api/javny/imagen', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ tipo, data: imagen.data, media: imagen.media, contexto: contexto || '' })
+    body: JSON.stringify(body)
   });
   const data = await r.json().catch(()=>({}));
   if(!r.ok) throw new Error(data.error || ('El servidor respondió HTTP '+r.status));

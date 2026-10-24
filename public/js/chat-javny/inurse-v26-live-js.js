@@ -471,6 +471,41 @@ async function buscarCercanosLive(tipo){
     return {error:'La búsqueda de centros no respondió a tiempo. Dilo tal cual; no inventes ningún centro.'};
   }
 }
+/* Herramienta donde_estoy: misma familia y mismas garantías que
+   buscar_cercanos — la posición sale de EnferixNearby.getCoords (jamás
+   dispara el diálogo de permiso en mitad de una llamada de voz) y la
+   dirección sale del endpoint /api/donde-estoy (Nominatim/OSM). La dirección
+   es la del punto registrado más cercano: siempre se presenta como
+   aproximada, y sin dato la respuesta es decirlo, nunca inventarlo. */
+async function dondeEstoyLive(){
+  if(!window.EnferixNearby||!window.EnferixNearby.getCoords){
+    return {error:'La función de ubicación de la aplicación no está disponible en esta pantalla.'};
+  }
+  let coords=null;
+  try{coords=await window.EnferixNearby.getCoords({timeoutMs:8000});}catch(e){}
+  if(!coords){
+    return {error:'Sin ubicación: el usuario no ha concedido el permiso de ubicación a la aplicación (se activa desde Servicios cercanos). No digas ninguna calle, barrio ni municipio de memoria.'};
+  }
+  const ctrl=(typeof AbortController!=='undefined')?new AbortController():null;
+  const timer=ctrl?setTimeout(()=>ctrl.abort(),12000):null;
+  try{
+    const r=await fetch('/api/donde-estoy?lat='+coords.lat+'&lon='+coords.lon,ctrl?{signal:ctrl.signal}:{});
+    const d=await r.json().catch(()=>({}));
+    if(timer)clearTimeout(timer);
+    if(!r.ok)return {error:'La consulta de la dirección falló: '+((d&&d.error)||('HTTP '+r.status))+'. Dilo tal cual; no inventes ninguna dirección.'};
+    return {
+      direccion:d.direccion||'',
+      via:d.via||'',
+      barrio:d.barrio||'',
+      municipio:d.municipio||'',
+      provincia:d.provincia||'',
+      notice:'Dirección APROXIMADA (punto más cercano registrado en '+(d.fuente||'OpenStreetMap')+', no la posición exacta). Dila siempre como aproximada; no añadas nada que no esté aquí.'
+    };
+  }catch(e){
+    if(timer)clearTimeout(timer);
+    return {error:'La consulta de la dirección no respondió a tiempo. Dilo tal cual; no inventes ninguna dirección.'};
+  }
+}
 function updateCaseFromTool(args){
   if(args.priority)caseData.priority=String(args.priority).slice(0,300);
   if(args.patient_summary)caseData.patientSummary=String(args.patient_summary).slice(0,900);
@@ -577,6 +612,9 @@ Durante un caso:
 6. El contenido interno puede proceder de documentación antigua. No lo presentes como guía actual y señala que debe contrastarse.
 7. No inventes dosis, concentraciones, energías, tiempos ni contraindicaciones. Solo menciona una dosis si aparece expresamente en la fuente devuelta, leyéndola despacio y diciendo que debe verificarse con la ficha técnica/protocolo vigente.
 7b. Si preguntan por el hospital, las urgencias o el desfibrilador (DEA) más cercano, llama a buscar_cercanos y lee SOLO lo que devuelva: nombre y distancia, y la dirección si la piden. Si devuelve un error o no hay ubicación, dilo tal cual y sigue con el caso. Nunca digas un centro, una dirección ni una distancia que no vengan de la herramienta.
+7c. Si el usuario pide iniciar la parada, el metrónomo o el ritmo de compresiones, llama a rcp_parada con accion "iniciar". Si durante una parada canta un evento (descarga, adrenalina, intubación…), llama a rcp_parada con accion "anotar" pasando el evento tal como lo dijo. Esa herramienta solo cronometra y registra en el dispositivo: la orientación clínica sigue saliendo de search_inurse y de estas reglas.
+7d. Si el usuario pide el traspaso, el relevo o el SBAR, llama a traspaso_sbar rellenando los cuatro campos ÚNICAMENTE con lo dicho en la conversación, como la regla 9b: nada inferido, y lo no referido se deja vacío. Tras llamarla, di solo que el traspaso está en pantalla, sin repetirlo entero.
+7e. Si preguntan dónde están o por su ubicación, llama a donde_estoy y lee la dirección que devuelva diciendo SIEMPRE que es aproximada. Si devuelve un error o no hay ubicación, dilo tal cual y sigue con el caso. Nunca digas una calle, un barrio ni un municipio que no vengan de la herramienta.
 8. Llama a update_case cuando cambie la prioridad, aparezca una señal de alarma, haya nuevas actuaciones o falten datos.
 9. No repitas nombres, DNI, números de historia, teléfonos ni otros identificadores.
 9b. En el panel del caso (update_case) recoge SÓLO lo que el usuario ha dicho, nunca lo inferido. Si dice "mi padre", el resumen es "padre del usuario", no "varón" ni una edad: el sexo y la edad no se han dicho. No completes sexo, edad, antecedentes ni diagnóstico a partir de suposiciones; deja el hueco o ponlo en datos pendientes. Lo que se muestra en pantalla se lee como dato del caso, y un dato inventado es peor que un hueco.
@@ -612,6 +650,39 @@ const tools=[{
       }
     },
     {
+      name:'donde_estoy',
+      description:'Dirección aproximada del usuario (calle, barrio, municipio) a partir de la ubicación que ya compartió con la aplicación, vía OpenStreetMap. Si no hay permiso devuelve un error que hay que transmitir tal cual. La dirección se presenta SIEMPRE como aproximada; nunca inventes una calle ni un municipio.',
+      parameters:{
+        type:'OBJECT',
+        properties:{}
+      }
+    },
+    {
+      name:'rcp_parada',
+      description:'Controla la herramienta local de RCP de la aplicación: abre el panel e inicia a la vez el metrónomo de compresiones y el cronómetro de la parada, y apunta en el registro, con su hora exacta, los eventos que el usuario va cantando (descarga, adrenalina, intubación…). No calcula ni decide nada clínico: solo cronometra y registra en el dispositivo.',
+      parameters:{
+        type:'OBJECT',
+        properties:{
+          accion:{type:'STRING',enum:['iniciar','anotar'],description:'iniciar: abre el panel y arranca metrónomo, cronómetro y registro. anotar: apunta un evento con su hora (requiere una parada ya iniciada).'},
+          evento:{type:'STRING',description:'Solo con accion=anotar: el evento tal como lo ha dicho el usuario, p. ej. "Descarga" o "Adrenalina administrada".'}
+        },
+        required:['accion']
+      }
+    },
+    {
+      name:'traspaso_sbar',
+      description:'Muestra en pantalla el traspaso SBAR del caso para el equipo que llega, compuesto ÚNICAMENTE con lo dicho en la conversación (nada inferido; lo no referido se deja vacío). La pantalla permite leerlo, escucharlo, copiarlo y compartirlo, y adjunta sola el registro de la parada con sus horas si lo hay.',
+      parameters:{
+        type:'OBJECT',
+        properties:{
+          situacion:{type:'STRING',description:'S · Situación: qué pasa ahora y prioridad, con las palabras dichas.'},
+          antecedentes:{type:'STRING',description:'B · Antecedentes referidos del paciente. Vacío si no se han dicho.'},
+          evaluacion:{type:'STRING',description:'A · Evaluación: constantes y hallazgos DICHOS, y señales de alarma.'},
+          recomendacion:{type:'STRING',description:'R · Recomendación: qué se pide al equipo que llega, según lo hablado.'}
+        }
+      }
+    },
+    {
       name:'update_case',
       description:'Actualiza el panel temporal del caso para mostrar prioridad, resumen, actuaciones inmediatas, datos pendientes y señales de alarma.',
       parameters:{
@@ -628,6 +699,56 @@ const tools=[{
   ]
 }];
 
+/* Herramienta traspaso_sbar (decisión de Juanky): puente al visor LOCAL del
+   traspaso (P41, window.EnferixSBAR). El modelo la llama solo cuando el
+   usuario pide el relevo; aquí no se redacta nada, solo se pinta lo que el
+   modelo compuso con lo dicho (regla 9b). */
+function sbarDesdeLive(args){
+  const sbar=window.EnferixSBAR;
+  if(!sbar)return {error:'El visor del traspaso no está cargado en esta pantalla'};
+  try{
+    const a=args||{};
+    sbar.mostrar({
+      situacion:String(a.situacion||'').slice(0,600),
+      antecedentes:String(a.antecedentes||'').slice(0,600),
+      evaluacion:String(a.evaluacion||'').slice(0,600),
+      recomendacion:String(a.recomendacion||'').slice(0,600)
+    });
+    return {ok:true,estado:'Traspaso SBAR mostrado en pantalla, con botones de escuchar, copiar y compartir.'};
+  }catch(e){
+    return {error:e.message||String(e)};
+  }
+}
+
+/* Herramienta rcp_parada (decisión de Juanky): puente a la herramienta LOCAL
+   de RCP (P40, window.EnferixRCP). El modelo la lanza si la conversación lo
+   pide, igual que search_inurse — nada de esto toca el flujo de la charla.
+   Solo cronometra y registra; la orientación clínica sigue siendo del guion
+   y de search_inurse. Finalizar la parada se hace SIEMPRE desde el panel,
+   con su confirmación en pantalla, nunca por voz. */
+function rcpDesdeLive(args){
+  const rcp=window.EnferixRCP;
+  if(!rcp)return {error:'La herramienta de RCP no está cargada en esta pantalla'};
+  const accion=String((args&&args.accion)||'').toLowerCase();
+  try{
+    if(accion==='iniciar'){
+      if(rcp.activa&&rcp.activa())return {ok:true,estado:'Ya hay una parada en marcha: metrónomo y registro siguen corriendo.'};
+      rcp.iniciarParada();
+      return {ok:true,estado:'Parada iniciada: metrónomo de compresiones, cronómetro y registro en marcha. Los avisos de cada 2 minutos los da la propia herramienta.'};
+    }
+    if(accion==='anotar'){
+      if(!(rcp.activa&&rcp.activa()))return {error:'No hay ninguna parada iniciada: hay que iniciar la parada primero'};
+      const ev=String((args&&args.evento)||'').trim().slice(0,120);
+      if(!ev)return {error:'Falta el evento a anotar'};
+      rcp.anotar(ev);
+      return {ok:true,estado:'Anotado con su hora: '+ev};
+    }
+    return {error:'Acción no reconocida (iniciar o anotar)'};
+  }catch(e){
+    return {error:e.message||String(e)};
+  }
+}
+
 async function executeToolCall(toolCall){
   const responses=[];
   for(const fc of (toolCall.functionCalls||[])){
@@ -638,6 +759,12 @@ async function executeToolCall(toolCall){
         result=searchINurse(args.query||'',args.focus||'all',args.limit||5);
       }else if(fc.name==='buscar_cercanos'){
         result=await buscarCercanosLive(args.tipo||'all');
+      }else if(fc.name==='donde_estoy'){
+        result=await dondeEstoyLive();
+      }else if(fc.name==='rcp_parada'){
+        result=rcpDesdeLive(args);
+      }else if(fc.name==='traspaso_sbar'){
+        result=sbarDesdeLive(args);
       }else if(fc.name==='update_case'){
         result=updateCaseFromTool(args);
       }else{

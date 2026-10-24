@@ -73,9 +73,12 @@
     var saved = '';
     try { saved = (localStorage.getItem('inurse_v20_backend_url') || '').trim().replace(/\/$/,''); } catch(e){}
     if(saved) return saved;
-    var key = '';
-    try { key = localStorage.getItem('guiaHJ23_apikey') || ''; } catch(e){}
-    if(!key && /^https?:$/.test(location.protocol)) return location.origin;
+    /* Desde que la redacción vive en el servidor (F1e), la portada usa SIEMPRE
+       el servidor del mismo origen cuando la app se sirve por web. Una API key
+       personal olvidada en Ajustes (guiaHJ23_apikey, del modo antiguo "Gemini
+       directo") NO desactiva este panel: ese modo queda para el chat y para la
+       app abierta desde file://, donde no hay origen al que llamar. */
+    if(/^https?:$/.test(location.protocol)) return location.origin;
     return '';
   }
 

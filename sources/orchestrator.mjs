@@ -534,9 +534,12 @@ function assembleContext(question, { articles, niceGuidelines, fdaDrug, clinical
   // La extensión sólo se acota en la consulta de portada (opciones.conciso). El
   // chat del avatar mantiene su desarrollo largo de siempre.
   const extension = opciones.conciso
-    ? `\nEXTENSIÓN: entre 2000 y 3000 caracteres. Ve al grano: nada de introducciones ni de
-recapitulaciones. Prioriza lo accionable y lo que cambia la conducta clínica. El desarrollo
-extenso queda para el chat, no para esta respuesta.`
+    ? `\nEXTENSIÓN: entre 2000 y 3000 caracteres. Sigue el MISMO orden de apartados del guion
+—contexto clínico, presentación clínica, manejo basado en evidencia, puntos clave para
+enfermería—, con sus subtítulos, en versión comprimida: el contexto en una o dos líneas y el
+peso en el manejo y en los puntos de enfermería. Sin introducciones de cortesía ni
+recapitulaciones, sin puntos suspensivos y sin líneas separadoras. El desarrollo extenso
+queda para el chat, no para esta respuesta.`
     : "";
 
   if (n > 0) {
