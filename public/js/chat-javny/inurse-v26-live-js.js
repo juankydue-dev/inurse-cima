@@ -506,6 +506,30 @@ async function dondeEstoyLive(){
     return {error:'La consulta de la dirección no respondió a tiempo. Dilo tal cual; no inventes ninguna dirección.'};
   }
 }
+/* Herramienta temporizador: puente a los temporizadores LOCALES de la app
+   (P43, window.EnferixTemporizadores). Aquí no se cuenta nada: el componente
+   lleva la cuenta atrás y da el aviso (voz + pitidos + vibración) al
+   cumplirse, también si la conversación de Live ya terminó. El modelo solo
+   crea, cancela o consulta, y JAMÁS avisa por su cuenta. */
+function temporizadorDesdeLive(args){
+  try{
+    if(!window.EnferixTemporizadores){
+      return {error:'La herramienta de temporizadores no está disponible en esta pantalla.'};
+    }
+    var T=window.EnferixTemporizadores;
+    var a=(args&&args.accion)||'';
+    if(a==='iniciar'){
+      var r=T.crear(Number(args.duracion_segundos),String(args.etiqueta||'').slice(0,80));
+      if(r.error)return r;
+      return {ok:true,estado:'Temporizador «'+(r.etiqueta||'sin etiqueta')+'» en marcha ('+r.segundos+' segundos). La aplicación avisará con voz y pitidos al cumplirse: no cuentes el tiempo ni avises tú.'};
+    }
+    if(a==='cancelar')return T.cancelar(args.etiqueta||'todos');
+    if(a==='consultar')return {temporizadores:T.listar()};
+    return {error:'Acción no reconocida (iniciar, cancelar o consultar)'};
+  }catch(e){
+    return {error:e.message||String(e)};
+  }
+}
 function updateCaseFromTool(args){
   if(args.priority)caseData.priority=String(args.priority).slice(0,300);
   if(args.patient_summary)caseData.patientSummary=String(args.patient_summary).slice(0,900);
@@ -615,6 +639,7 @@ Durante un caso:
 7c. Si el usuario pide iniciar la parada, el metrónomo o el ritmo de compresiones, llama a rcp_parada con accion "iniciar". Si durante una parada canta un evento (descarga, adrenalina, intubación…), llama a rcp_parada con accion "anotar" pasando el evento tal como lo dijo. Esa herramienta solo cronometra y registra en el dispositivo: la orientación clínica sigue saliendo de search_inurse y de estas reglas.
 7d. Si el usuario pide el traspaso, el relevo o el SBAR, llama a traspaso_sbar rellenando los cuatro campos ÚNICAMENTE con lo dicho en la conversación, como la regla 9b: nada inferido, y lo no referido se deja vacío. Tras llamarla, di solo que el traspaso está en pantalla, sin repetirlo entero.
 7e. Si preguntan dónde están o por su ubicación, llama a donde_estoy y lee la dirección que devuelva diciendo SIEMPRE que es aproximada. Si devuelve un error o no hay ubicación, dilo tal cual y sigue con el caso. Nunca digas una calle, un barrio ni un municipio que no vengan de la herramienta.
+7f. Si el usuario pide un temporizador o que le avises dentro de un tiempo («avísame en tres minutos», «pon cinco minutos para la adrenalina»), llama a temporizador con accion "iniciar", la duración en segundos y una etiqueta corta con el motivo. Confirma solo que está puesto y sigue con el caso: el aviso al cumplirse lo da la APLICACIÓN con voz, pitidos y cuenta atrás en pantalla — tú no cuentes el tiempo ni des el aviso por tu cuenta. Si piden quitarlo, accion "cancelar" con la etiqueta (o "todos"); si preguntan cuánto queda, accion "consultar" y lee lo que devuelva.
 8. Llama a update_case cuando cambie la prioridad, aparezca una señal de alarma, haya nuevas actuaciones o falten datos.
 9. No repitas nombres, DNI, números de historia, teléfonos ni otros identificadores.
 9b. En el panel del caso (update_case) recoge SÓLO lo que el usuario ha dicho, nunca lo inferido. Si dice "mi padre", el resumen es "padre del usuario", no "varón" ni una edad: el sexo y la edad no se han dicho. No completes sexo, edad, antecedentes ni diagnóstico a partir de suposiciones; deja el hueco o ponlo en datos pendientes. Lo que se muestra en pantalla se lee como dato del caso, y un dato inventado es peor que un hueco.
@@ -655,6 +680,19 @@ const tools=[{
       parameters:{
         type:'OBJECT',
         properties:{}
+      }
+    },
+    {
+      name:'temporizador',
+      description:'Temporizadores locales de la aplicación, con cuenta atrás en pantalla y aviso de voz, pitidos y vibración al cumplirse. iniciar: crea uno con su duración en segundos y una etiqueta corta con el motivo. cancelar: anula por etiqueta (o todos). consultar: lista los que corren y cuánto les queda. Quien avisa al cumplirse es la APLICACIÓN: tú nunca cuentes el tiempo ni des el aviso por tu cuenta.',
+      parameters:{
+        type:'OBJECT',
+        properties:{
+          accion:{type:'STRING',enum:['iniciar','cancelar','consultar'],description:'iniciar: crear y arrancar. cancelar: anular. consultar: listar los que corren.'},
+          duracion_segundos:{type:'NUMBER',description:'Solo con iniciar: duración en segundos (5 a 14400).'},
+          etiqueta:{type:'STRING',description:'Motivo corto del aviso («adrenalina», «reevaluar ritmo»). Con cancelar: cuál anular, o «todos».'}
+        },
+        required:['accion']
       }
     },
     {
@@ -761,6 +799,8 @@ async function executeToolCall(toolCall){
         result=await buscarCercanosLive(args.tipo||'all');
       }else if(fc.name==='donde_estoy'){
         result=await dondeEstoyLive();
+      }else if(fc.name==='temporizador'){
+        result=temporizadorDesdeLive(args);
       }else if(fc.name==='rcp_parada'){
         result=rcpDesdeLive(args);
       }else if(fc.name==='traspaso_sbar'){
