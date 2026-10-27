@@ -777,8 +777,18 @@ function rcpDesdeLive(args){
            queda en PAUSA (micrófono de Live pausado) hasta el fin de la
            parada, y se reanuda solo. El flujo de Live fuera del modo no se
            toca: esto solo corre cuando el usuario pide iniciar la parada. */
-        const reanudar=(!micPaused)?function(){ if(micPaused)toggleMic(); }:function(){};
+        const estabaAbierto=!micPaused;
+        const reanudar=function(){
+          if(!live)return;
+          startMicrophone().then(function(){
+            if(estabaAbierto){ if(micPaused)toggleMic(); }
+            else { micBtn.classList.remove('active');$('small',micBtn).textContent='Pausado'; }
+          }).catch(function(){});
+        };
         if(!micPaused)toggleMic();
+        /* En iOS un micrófono abierto, aunque no envíe, deja el audio en modo
+           grabación y la voz del modo parada sale muda: se cierra de verdad. */
+        stopMicrophone(false);
         window.EnferixModoParada.iniciar({ alTerminar: reanudar });
         return {ok:true,estado:'Modo parada guiado iniciado: la aplicación canta los pasos y lleva los tiempos. Tu micrófono con Javny queda en pausa hasta el fin de la parada. Di solo que el modo parada está en marcha y no añadas ninguna indicación clínica.'};
       }

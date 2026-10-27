@@ -27,7 +27,7 @@
 
   var estado = null;
   var overlay = null, tickTimer = null, wakeLock = null;
-  var rec = null, recActivo = false, ignorarVozHasta = 0, hablandoAhora = 0;
+  var rec = null, recActivo = false, recSuspendido = false, ignorarVozHasta = 0, hablandoAhora = 0, ttsVivas = [];
   var alTerminarCb = null, wallT0 = null, registroVolcado = 0;
 
   var BOTONES = [
@@ -64,17 +64,42 @@
   function decir(frase){
     try {
       if(!('speechSynthesis' in window)) return;
+      // En iOS, con el reconocimiento ESCUCHANDO, la síntesis sale MUDA (la
+      // sesión de audio queda en modo grabación): como un DEA de verdad, se
+      // calla el oído mientras la app habla y se reabre justo después. De
+      // paso, el anti-eco pasa de filtro a físico: el micro está cerrado.
+      if(rec && recActivo && !recSuspendido){
+        recSuspendido = true;
+        try { rec.stop(); } catch(e){}
+      }
+      try { window.speechSynthesis.resume(); } catch(e){}  // Safari se queda en pausa a veces
       var u = new SpeechSynthesisUtterance(frase);
       u.lang = 'es-ES'; u.rate = 1.04; u.volume = 1;
       hablandoAhora++;
+      ttsVivas.push(u);        // sin referencia viva, el GC de Safari corta la voz a medias
       u.onstart = function(){ ignorarVozHasta = Infinity; };
+      var hecho = false;
       var fin = function(){
+        if(hecho) return;
+        hecho = true;
+        var i = ttsVivas.indexOf(u); if(i !== -1) ttsVivas.splice(i, 1);
         hablandoAhora = Math.max(0, hablandoAhora - 1);
-        if(hablandoAhora === 0) ignorarVozHasta = Date.now() + 600;  // anti-eco
+        if(hablandoAhora === 0){
+          ignorarVozHasta = Date.now() + 600;  // anti-eco
+          setTimeout(reanudarOido, 450);
+        }
       };
       u.onend = fin; u.onerror = fin;
+      // Vigilante: si una frase nunca dispara su fin (pasa en iOS), que no
+      // deje el oído cerrado ni el anti-eco en infinito.
+      setTimeout(fin, Math.max(5000, frase.length * 120));
       window.speechSynthesis.speak(u);
     } catch(e){}
+  }
+  function reanudarOido(){
+    if(!recActivo || !recSuspendido || hablandoAhora > 0) return;
+    recSuspendido = false;
+    try { if(rec) rec.start(); } catch(e){}
   }
 
   /* ── Despacho de eventos al motor ───────────────────────────────────────── */
@@ -131,10 +156,13 @@
         }
       };
       rec.onend = function(){
-        if(recActivo){ try { rec.start(); } catch(e){} }    // el continuo se cae solo: rearmar
+        // El continuo se cae solo: rearmar — salvo suspensión a propósito
+        // mientras la app habla (la reabre reanudarOido).
+        if(recActivo && !recSuspendido){ try { rec.start(); } catch(e){} }
       };
       recActivo = true;
-      rec.start();
+      if(hablandoAhora > 0) recSuspendido = true;   // lo abre reanudarOido al callar
+      else rec.start();
       if(chip) chip.textContent = '🎙 Escuchando órdenes';
     } catch(e){
       if(chip) chip.textContent = '🎙 Voz no disponible: usa los botones';
@@ -142,6 +170,7 @@
   }
   function paraVoz(){
     recActivo = false;
+    recSuspendido = false;
     if(rec){ try { rec.stop(); } catch(e){} rec = null; }
   }
 
