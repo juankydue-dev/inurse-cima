@@ -82,7 +82,9 @@
   var audioCtx = null;
   function pitidos(){
     try {
-      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      // Canal COMPARTIDO de la app (lo publica P40): un contexto propio era
+      // uno más hacia el límite de iOS y dejaba mudo el metrónomo de RCP.
+      audioCtx = (window.EnferixAudioCompartido && window.EnferixAudioCompartido()) || audioCtx || new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === 'suspended') audioCtx.resume().catch(function(){});
       var t0 = audioCtx.currentTime;
       for (var i = 0; i < 6; i++) {

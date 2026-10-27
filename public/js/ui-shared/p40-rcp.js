@@ -30,6 +30,24 @@
   'use strict';
   var BPM = 110;              // compresiones/minuto (rango SVB 100-120)
   var STOREK = 'inurse_rcp_v1';
+  var VOLK = 'inurse_metro_vol_v1';
+  var volumen = 1;
+  try { var _v = parseFloat(localStorage.getItem(VOLK)); if(_v >= 0.1 && _v <= 1) volumen = _v; } catch(e){}
+
+  /* Canal de audio ÚNICO para toda la app (metrónomo, temporizadores, pitidos).
+     iOS Safari corta en silencio los AudioContext más antiguos al pasar de ~4
+     simultáneos, y en una parada ya conviven los dos de Javny Live y el de la
+     capa de voz: cada módulo con contexto propio acercaba el corte — así se
+     quedó mudo el metrónomo al entrar los temporizadores (regresión del 25-10). */
+  if(!window.EnferixAudioCompartido){
+    window.EnferixAudioCompartido = function(){
+      if(!window.__enferixAudioCtx){
+        try { window.__enferixAudioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){ return null; }
+      }
+      if(window.__enferixAudioCtx.state === 'suspended'){ try { window.__enferixAudioCtx.resume(); } catch(e){} }
+      return window.__enferixAudioCtx;
+    };
+  }
 
   var L = {
     es: {
@@ -42,6 +60,7 @@
       modoCont: 'Continuo',
       iniciarMetro: '▶ Iniciar metrónomo',
       pararMetro: '⏹ Parar metrónomo',
+      probar: 'Probar sonido',
       registro: 'Registro de la parada',
       iniciarParada: '▶ INICIAR PARADA',
       finalizar: '⏹ Finalizar parada',
@@ -93,6 +112,7 @@
       modoCont: 'Continu',
       iniciarMetro: '▶ Inicia el metrònom',
       pararMetro: '⏹ Atura el metrònom',
+      probar: 'Prova el so',
       registro: 'Registre de l’aturada',
       iniciarParada: '▶ INICIA L’ATURADA',
       finalizar: '⏹ Finalitza l’aturada',
@@ -173,44 +193,101 @@
   var overlay = null;
   var vozOn = true;
   // metrónomo
-  var audio = null, metroOn = false, metroTimer = null, proximo = 0, nCompresion = 0, modo = '302', enVentilacion = 0;
+  var audio = null, metroOn = false, metroTimer = null, proximo = 0, nCompresion = 0, modo = '302', enVentilacion = 0, masterGain = null, ventTick = 0;
   // parada
   var parada = null;   // {t0, eventos:[{ms, hora, texto}], avisado:{} }
   var relojTimer = null, ultimoMinuto = 0, wakeLock = null;
 
-  /* ── Metrónomo (WebAudio con planificación por adelantado) ───────────────── */
-  function click(cuando, grave){
+  /* ── Metrónomo (WebAudio con planificación por adelantado) ─────────────────
+     Click PERCUSIVO (punto 10.3 del encargo de modo parada): ataque
+     instantáneo, ~45 ms, frecuencias medias-altas — lo que más destaca entre
+     el ruido de una sala — con envolvente a ganancia 1 y un compresor dinámico
+     antes de la salida para no saturar. El canal es el COMPARTIDO de la app:
+     con contexto propio, iOS lo cortaba al convivir con los de Javny Live, la
+     capa de voz y los temporizadores. */
+  function obtenerAudio(){
+    audio = (window.EnferixAudioCompartido && window.EnferixAudioCompartido()) || audio;
+    if(!audio){ try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){ return null; } }
+    if(audio.state === 'suspended'){ try { audio.resume(); } catch(e){} }
+    return audio;
+  }
+  function cadenaSalida(){
+    // La cadena pertenece a UN contexto: si el compartido apareció después,
+    // se reconstruye sobre él.
+    if(masterGain && masterGain.context === audio) return masterGain;
+    var comp = audio.createDynamicsCompressor();
+    comp.threshold.value = -12; comp.knee.value = 6; comp.ratio.value = 6;
+    comp.attack.value = 0.001; comp.release.value = 0.08;
+    masterGain = audio.createGain();
+    masterGain.gain.value = volumen;
+    masterGain.connect(comp); comp.connect(audio.destination);
+    return masterGain;
+  }
+  function click(cuando, tipo){
+    // tipo: 'comp' (compresión), 'vent' (los dos tonos del 30:2),
+    // 'vent10' (marca aguda cada 6 s del modo continuo: ventilación a 10/min)
     var o = audio.createOscillator(), g = audio.createGain();
-    o.frequency.value = grave ? 440 : 880;
-    g.gain.setValueAtTime(0.5, cuando);
-    g.gain.exponentialRampToValueAtTime(0.001, cuando + (grave ? 0.15 : 0.06));
-    o.connect(g); g.connect(audio.destination);
-    o.start(cuando); o.stop(cuando + (grave ? 0.16 : 0.07));
+    o.type = 'square';
+    var dur = 0.045, f0 = 2000, f1 = 900;
+    if(tipo === 'vent'){ dur = 0.12; f0 = 700; f1 = 500; }
+    if(tipo === 'vent10'){ dur = 0.07; f0 = 3200; f1 = 2400; }
+    o.frequency.setValueAtTime(f0, cuando);
+    o.frequency.exponentialRampToValueAtTime(f1, cuando + dur);
+    g.gain.setValueAtTime(1, cuando);
+    g.gain.exponentialRampToValueAtTime(0.001, cuando + dur);
+    o.connect(g); g.connect(cadenaSalida());
+    o.start(cuando); o.stop(cuando + dur + 0.01);
   }
   function planificar(){
     if(!metroOn) return;
     var paso = 60 / BPM;
     while(proximo < audio.currentTime + 0.15){
       if(enVentilacion > 0){
-        click(proximo, true);
+        click(proximo, 'vent');
         enVentilacion--;
-        proximo += 1.6;                       // dos tonos graves espaciados: ventilaciones
+        proximo += 1.6;                       // dos tonos espaciados: ventilaciones del 30:2
       } else {
-        click(proximo, false);
+        click(proximo, 'comp');
         nCompresion++;
         if(modo === '302' && nCompresion >= 30){ nCompresion = 0; enVentilacion = 2; proximo += paso; }
         else proximo += paso;
       }
     }
+    // Modo continuo (vía aérea avanzada): marca aguda cada 6 s = 10
+    // ventilaciones/minuto, sin parar nunca las compresiones.
+    if(modo === 'cont'){
+      if(!ventTick) ventTick = audio.currentTime + 6;
+      while(ventTick < audio.currentTime + 0.15){
+        click(ventTick, 'vent10');
+        ventTick += 6;
+      }
+    }
   }
   function iniciarMetro(){
     if(metroOn) return;
-    try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); } catch(e){ return; }
-    if(audio.state === 'suspended'){ try { audio.resume(); } catch(e){} }
-    metroOn = true; nCompresion = 0; enVentilacion = 0; proximo = audio.currentTime + 0.1;
+    if(!obtenerAudio()) return;
+    metroOn = true; nCompresion = 0; enVentilacion = 0; ventTick = 0; proximo = audio.currentTime + 0.1;
     metroTimer = setInterval(planificar, 40);
     pintarMetro();
   }
+  /* «Probar sonido» fuera de la parada: cuatro clicks al tempo real, para
+     ajustar el volumen ANTES de necesitarlo. */
+  function probarSonido(){
+    if(metroOn || !obtenerAudio()) return;
+    var paso = 60 / BPM;
+    for(var i = 0; i < 4; i++) click(audio.currentTime + 0.05 + i * paso, 'comp');
+  }
+  function ponVolumen(v){
+    volumen = Math.min(1, Math.max(0.1, v));
+    try { localStorage.setItem(VOLK, String(volumen)); } catch(e){}
+    if(masterGain) masterGain.gain.value = volumen;
+  }
+  // Volumen por delegación en el documento: el panel se reconstruye entero al
+  // abrirse y así no hay listener que pueda quedarse colgado de una iteración.
+  document.addEventListener('input', function(e){
+    var r = e.target && e.target.closest && e.target.closest('[data-p40-vol]');
+    if(r) ponVolumen(Number(r.value) / 100);
+  });
   function pararMetro(){
     metroOn = false;
     clearInterval(metroTimer); metroTimer = null;
@@ -258,6 +335,8 @@
     var minuto = Math.floor(ms / 60000);
     if(minuto > ultimoMinuto){
       ultimoMinuto = minuto;
+      // Con el modo parada guiado activo, quien canta los tiempos es su motor.
+      if(window.EnferixModoParada && window.EnferixModoParada.activa && window.EnferixModoParada.activa()) return;
       if(minuto % 2 === 0) decir(t('min2'));
       else decir(t('minuto')(minuto));
     }
@@ -265,6 +344,12 @@
   function finalizarParada(){
     if(!parada) return;
     if(!confirm(t('confFin'))) return;
+    terminarParada();
+  }
+  // Igual que finalizar, sin el confirm(): el modo parada guiado ya exige
+  // repetir «fin de parada» para confirmar, y dos preguntas serían una trampa.
+  function terminarParada(){
+    if(!parada) return;
     anotar(t('evTexto').fin);
     clearInterval(relojTimer); relojTimer = null;
     pararMetro();
@@ -355,6 +440,10 @@
       +         '<button type="button" data-p40-modo="cont">' + esc(t('modoCont')) + '</button>'
       +       '</div>'
       +     '</div>'
+      +     '<div class="p40-vol"><span aria-hidden="true">🔊</span>'
+      +       '<input type="range" min="10" max="100" value="' + Math.round(volumen * 100) + '" data-p40-vol aria-label="' + esc(t('probar')) + '">'
+      +       '<button type="button" data-p40="probar">' + esc(t('probar')) + '</button>'
+      +     '</div>'
       +   '</div>'
       +   '<div class="p40-bloque">'
       +     '<div class="p40-bloque-cab"><b>' + esc(t('registro')) + '</b></div>'
@@ -384,7 +473,7 @@
     overlay.addEventListener('click', function(e){
       if(e.target === overlay && !parada){ cerrar(); return; }
       var m = e.target.closest('[data-p40-modo]');
-      if(m){ modo = m.getAttribute('data-p40-modo'); nCompresion = 0; enVentilacion = 0; pintarMetro(); return; }
+      if(m){ modo = m.getAttribute('data-p40-modo'); nCompresion = 0; enVentilacion = 0; ventTick = 0; pintarMetro(); return; }
       var evb = e.target.closest('[data-p40-ev]');
       if(evb){
         evb.classList.add('p40-flash');
@@ -404,6 +493,7 @@
       var acc = b.getAttribute('data-p40');
       if(acc === 'cerrar') cerrar();
       else if(acc === 'metro'){ if(metroOn) pararMetro(); else iniciarMetro(); }
+      else if(acc === 'probar') probarSonido();
       else if(acc === 'iniciarParada') iniciarParada();
       else if(acc === 'finalizar') finalizarParada();
       else if(acc === 'ultimo') ultimoRegistro();
@@ -459,5 +549,16 @@
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
   setTimeout(boot, 700); setTimeout(boot, 2400);
-  window.EnferixRCP = { open: abrir, iniciarParada: function(){ abrir(); iniciarParada(); }, anotar: anotar, activa: function(){ return !!parada; } };
+  window.EnferixRCP = {
+    open: abrir,
+    iniciarParada: function(){ abrir(); iniciarParada(); },
+    anotar: anotar,
+    activa: function(){ return !!parada; },
+    /* Para el modo parada guiado (P45): maneja el MISMO registro y el MISMO
+       metrónomo, sin abrir el panel ni duplicar nada. */
+    iniciarParadaFondo: iniciarParada,
+    finalizarSinConfirmar: terminarParada,
+    metro: { on: iniciarMetro, off: pararMetro, activo: function(){ return metroOn; } },
+    ponModo: function(m){ if(m === '302' || m === 'cont'){ modo = m; nCompresion = 0; enVentilacion = 0; ventTick = 0; pintarMetro(); } }
+  };
 })();
