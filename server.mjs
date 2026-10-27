@@ -22,6 +22,7 @@ import {
 } from "./auth.mjs";
 import { validarTerminologia, invalidateNnnCache, nnnStats, nnnDictionary } from "./terminology-connector.mjs";
 import { buscarCercanos } from "./sources/cercanos.mjs";
+import { dondeEstoy } from "./sources/donde-estoy.mjs";
 import { medicineDetail } from "./sources/cima.mjs";
 import { TIPOS_DOCUMENTO, tipoValido } from "./sources/plantillas-proyectos.mjs";
 import { generarEstructura } from "./sources/proyectos-ia.mjs";
@@ -758,13 +759,23 @@ ESTRUCTURA SBAR:`;
       const rawBody = await readBodyLarge(req);
       const parsed = rawBody ? JSON.parse(rawBody) : {};
       const tipo = clean(parsed.tipo, 8);
-      if (tipo !== "ecg" && tipo !== "rx") return json(res, 400, { error: "Tipo de imagen no reconocido" });
+      if (tipo !== "ecg" && tipo !== "rx" && tipo !== "lab" && tipo !== "caso") return json(res, 400, { error: "Tipo de imagen no reconocido" });
       const data = typeof parsed.data === "string" ? parsed.data : "";
-      if (!data) return json(res, 400, { error: "Falta la imagen" });
+      // Serie de imágenes del mismo estudio (varias proyecciones, o los cortes
+      // extraídos de un vídeo). Solo datos saneados: base64 y su media type.
+      const imagenes = Array.isArray(parsed.imagenes)
+        ? parsed.imagenes
+            .filter(i => i && typeof i.data === "string" && i.data.length > 0)
+            .slice(0, 14)
+            .map(i => ({ data: i.data, media: clean(i.media, 40) || "image/jpeg", rol: (i.rol === "rx" || i.rol === "lab" || i.rol === "ecg") ? i.rol : undefined }))
+        : [];
+      if (!data && imagenes.length === 0) return json(res, 400, { error: "Falta la imagen" });
       const { answer, proveedor } = await analizarImagen({
         tipo,
         data,
         media: clean(parsed.media, 40) || "image/jpeg",
+        imagenes,
+        origenVideo: parsed.origenVideo === true,
         contexto: clean(parsed.contexto, 1200)
       });
       res.setHeader("Cache-Control", "no-store");
@@ -888,6 +899,25 @@ ESTRUCTURA SBAR:`;
         });
       } catch (err) {
         return json(res, 503, { error: err.message || "Error consultando las fuentes" });
+      }
+    }
+
+    // ── ¿Dónde estoy? (geocodificación inversa) ──
+    // Convierte las coordenadas del usuario en una dirección legible vía
+    // Nominatim (OpenStreetMap). La dirección es la del punto registrado más
+    // cercano en el mapa, por eso se presenta siempre como aproximada. La
+    // consume la herramienta donde_estoy de Javny (chat y Live).
+    if (u.pathname === "/api/donde-estoy" && req.method === "GET") {
+      const lat = Number(u.searchParams.get("lat"));
+      const lon = Number(u.searchParams.get("lon"));
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+        return json(res, 400, { error: "Coordenadas no válidas" });
+      }
+      try {
+        const r = await dondeEstoy(lat, lon);
+        return json(res, 200, { ...r, lat, lon, fetchedAt: new Date().toISOString() });
+      } catch (err) {
+        return json(res, 503, { error: err.message || "Error consultando el geocodificador" });
       }
     }
 

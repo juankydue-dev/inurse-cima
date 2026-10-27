@@ -1146,7 +1146,16 @@
  }
  function p36EnlacesPanel(enl){
   if(!enl||!enl.length)return '';
+  var p36ca=false;try{var p36l=document.documentElement.lang||localStorage.getItem('inurse_lang')||navigator.language||'es';p36ca=/^ca/i.test(p36l);}catch(err){}
   return '<div class="p36-enlaces">'+enl.map(function(e){
+   if(e.tipo==='mapa'){
+    /* La dirección de donde_estoy: pulsarla abre el mapa con la posición real
+       del usuario; el segundo botón la comparte (o la copia si el navegador
+       no sabe compartir). La URL la compone el servidor solo con las
+       coordenadas numéricas del propio usuario. */
+    return '<button type="button" class="p36-enlace" data-p36-tipo="mapa" data-p36-url="'+esc(e.url||'')+'">📍 '+esc(e.titulo)+'</button>'
+     +'<button type="button" class="p36-enlace" data-p36-tipo="mapa-compartir" data-p36-url="'+esc(e.url||'')+'" data-p36-texto="'+esc(e.titulo)+'">📤 '+(p36ca?'Comparteix la ubicació':'Compartir ubicación')+'</button>';
+   }
    return '<button type="button" class="p36-enlace" data-p36-tipo="'+esc(e.tipo)+'" data-p36-id="'+esc(e.id)+'">'
     +(e.tipo==='escala'?'🧮':'📄')+' '+esc(e.titulo)+'</button>';
   }).join('')+'</div>';
@@ -1155,6 +1164,14 @@
   node.querySelectorAll('.p36-enlace').forEach(function(b){
    b.onclick=function(){
     var tipo=b.getAttribute('data-p36-tipo'),id=b.getAttribute('data-p36-id');
+    if(tipo==='mapa'){var u=b.getAttribute('data-p36-url')||'';if(u)window.open(u,'_blank','noopener');return;}
+    if(tipo==='mapa-compartir'){
+     var mu=b.getAttribute('data-p36-url')||'',mt=b.getAttribute('data-p36-texto')||'';
+     var msg=mt+'\n'+mu;
+     if(navigator.share){navigator.share({text:msg}).catch(function(err){});}
+     else if(navigator.clipboard){navigator.clipboard.writeText(msg).then(function(){b.textContent='📋 Copiada';}).catch(function(err){});}
+     return;
+    }
     if(tipo==='ficha'&&typeof window.openDoc==='function')window.openDoc(id);
     else if(tipo==='escala'){
      if(window.EnferixEscalas&&window.EnferixEscalas.openCalc)window.EnferixEscalas.openCalc(id);
@@ -1468,7 +1485,14 @@
  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!q('#ccWrap').classList.contains('hide'))hideChat()});
  q('#ccGuide').onclick=hideChat;
  q('#ccFab').onclick=showChat;
- q('#ccNew').onclick=function(){ if(messages.length&&!confirm('¿Empezar una conversación nueva? Se borrará la actual.'))return; messages=[];jset(CHATK,messages);paint(); };
+ q('#ccNew').onclick=function(){ if(messages.length&&!confirm('¿Empezar una conversación nueva? La actual queda guardada en Conversaciones (🗂).'))return; messages=[];jset(CHATK,messages);paint(); };
+ /* P37 · Conversaciones guardadas: API mínima para el cajón de conversaciones
+    (p37-chat-conversaciones.js). Solo leer y cargar el hilo en pantalla; el
+    archivo y su interfaz viven en ese componente, no aquí. */
+ window.EnferixChat={
+  mensajes:function(){return messages.slice()},
+  cargar:function(arr){messages=Array.isArray(arr)?arr.slice():[];jset(CHATK,messages);paint();}
+ };
 
  /* ---- ajustes ---- */
  function openSet(){q('#ccKey').value=lget(KEYK,'');q('#v20Backend').value=lget(BACKENDK,'');q('#ccVoiceSw').classList.toggle('on',autoVoice);q('#v22VerifySw').classList.toggle('on',verifyEnabled);q('#v23HandsFreeSw').classList.toggle('on',handsFree);q('#v23WakeSw').classList.toggle('on',requireWake);q('#ccSetModal').classList.add('on');var r=q('#v20TestResult');if(r){r.className='v20-test-result';r.textContent=''}}
