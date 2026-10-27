@@ -771,6 +771,17 @@ function rcpDesdeLive(args){
   try{
     if(accion==='iniciar'){
       if(rcp.activa&&rcp.activa())return {ok:true,estado:'Ya hay una parada en marcha: metrónomo y registro siguen corriendo.'};
+      if(window.EnferixModoParada&&window.EnferixModoParada.iniciar){
+        /* Modo parada guiado (decisión de Juanky, encargo modo-parada): la app
+           dirige como un DEA con su motor determinista; el chat con el modelo
+           queda en PAUSA (micrófono de Live pausado) hasta el fin de la
+           parada, y se reanuda solo. El flujo de Live fuera del modo no se
+           toca: esto solo corre cuando el usuario pide iniciar la parada. */
+        const reanudar=(!micPaused)?function(){ if(micPaused)toggleMic(); }:function(){};
+        if(!micPaused)toggleMic();
+        window.EnferixModoParada.iniciar({ alTerminar: reanudar });
+        return {ok:true,estado:'Modo parada guiado iniciado: la aplicación canta los pasos y lleva los tiempos. Tu micrófono con Javny queda en pausa hasta el fin de la parada. Di solo que el modo parada está en marcha y no añadas ninguna indicación clínica.'};
+      }
       rcp.iniciarParada();
       return {ok:true,estado:'Parada iniciada: metrónomo de compresiones, cronómetro y registro en marcha. Los avisos de cada 2 minutos los da la propia herramienta.'};
     }

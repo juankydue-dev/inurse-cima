@@ -57,6 +57,15 @@
 }
 .p40-modos button.on{ border-color:#33B6A6; color:#33B6A6; background:rgba(51,182,166,.1); }
 
+.p40-vol{ display:flex; align-items:center; gap:10px; margin-top:10px; }
+.p40-vol span{ font-size:15px; }
+.p40-vol input[type=range]{ flex:1; min-width:0; accent-color:#33B6A6; }
+.p40-vol button{
+  padding:8px 12px; border-radius:12px; cursor:pointer; font-size:12px; font-weight:700;
+  border:1px solid rgba(148,163,184,.25); background:rgba(148,163,184,.08); color:#c7d4f2;
+  white-space:nowrap;
+}
+
 .p40-iniciar{
   width:100%; padding:18px; border:0; border-radius:14px; cursor:pointer;
   background:linear-gradient(90deg,#f87171,#dc2626); color:#fff; font-size:17px; font-weight:900;
