@@ -28,8 +28,8 @@
       otrasLbl: 'Otras que hay en la casilla (opcional)',
       otrasPh: 'Ej: Enalapril, Metformina, Atorvastatina',
       otrasAyuda: 'Sepáralas con comas. Ayudan a descartar las que no son.',
-      foto: '📷 Hacer foto de la casilla',
-      repetir: '📷 Repetir foto',
+      foto: '📷 Hacer foto',
+      galeria: '🖼️ Elegir de la galería',
       identificar: '🔍 Identificar',
       analizando: 'Comparando con las fotos oficiales de CIMA',
       errBuscada: 'Escribe o dicta qué pastilla buscas',
@@ -72,8 +72,8 @@
       otrasLbl: 'Altres que hi ha a la casella (opcional)',
       otrasPh: 'Ex: Enalapril, Metformina, Atorvastatina',
       otrasAyuda: 'Separa-les amb comes. Ajuden a descartar les que no són.',
-      foto: '📷 Fes la foto de la casella',
-      repetir: '📷 Repeteix la foto',
+      foto: '📷 Fes la foto',
+      galeria: '🖼️ Tria de la galeria',
       identificar: '🔍 Identifica',
       analizando: 'Comparant amb les fotos oficials de CIMA',
       errBuscada: 'Escriu o dicta quina pastilla busques',
@@ -185,7 +185,11 @@
       +   '</div>'
       +   '<p class="p46-ayuda">' + esc(t('otrasAyuda')) + '</p>'
       +   '<input type="file" id="p46File" accept="image/*" capture="environment" style="display:none">'
-      +   '<button type="button" class="p46-foto" data-p46="foto">' + esc(t('foto')) + '</button>'
+      +   '<input type="file" id="p46Galeria" accept="image/*" style="display:none">'
+      +   '<div class="p46-fuentes">'
+      +     '<button type="button" class="p46-foto" data-p46="foto">' + esc(t('foto')) + '</button>'
+      +     '<button type="button" class="p46-foto" data-p46="galeria">' + esc(t('galeria')) + '</button>'
+      +   '</div>'
       +   '<div class="p46-previa" data-p46-previa style="display:none"></div>'
       +   '<button type="button" class="p46-enviar" data-p46="enviar">' + esc(t('identificar')) + '</button>'
       +   '<div class="p46-resultado" data-p46-res></div>'
@@ -200,19 +204,21 @@
       var acc = b.getAttribute('data-p46');
       if(acc === 'cerrar') cerrar();
       else if(acc === 'foto') overlay.querySelector('#p46File').click();
+      else if(acc === 'galeria') overlay.querySelector('#p46Galeria').click();
       else if(acc === 'enviar') enviar();
       else if(acc === 'escuchar') escuchar(b);
     });
-    overlay.querySelector('#p46File').addEventListener('change', function(){
-      cargar(this.files && this.files[0]); this.value = '';
+    ['#p46File', '#p46Galeria'].forEach(function(sel){
+      overlay.querySelector(sel).addEventListener('change', function(){
+        cargar(this.files && this.files[0]); this.value = '';
+      });
     });
     return overlay;
   }
 
   function pintarFoto(caja, tono){
     var previa = overlay.querySelector('[data-p46-previa]');
-    var btn = overlay.querySelector('.p46-foto');
-    if(!foto){ previa.style.display = 'none'; previa.innerHTML = ''; btn.textContent = t('foto'); return; }
+    if(!foto){ previa.style.display = 'none'; previa.innerHTML = ''; return; }
     var marco = '';
     if(caja){
       marco = '<span class="p46-marco p46-marco-' + tono + '" style="left:' + (caja[0] * 100) + '%;top:' + (caja[1] * 100)
@@ -220,7 +226,6 @@
     }
     previa.style.display = 'block';
     previa.innerHTML = '<div class="p46-lienzo"><img src="' + foto + '" alt="">' + marco + '</div>';
-    btn.textContent = t('repetir');
   }
   function limpiarResultado(){
     var res = overlay && overlay.querySelector('[data-p46-res]');
