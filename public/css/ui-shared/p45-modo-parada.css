@@ -1,0 +1,67 @@
+/* P45 · Modo parada estilo DEA */
+
+.p45-pantalla{
+  position:fixed; inset:0; z-index:46400; display:none; flex-direction:column; /* por encima de todo */
+  background:#050814; color:#E5EEFF;
+  padding:max(14px,env(safe-area-inset-top)) 14px max(12px,env(safe-area-inset-bottom));
+  gap:10px;
+}
+.p45-pantalla.on{ display:flex; }
+
+.p45-cab{ display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+.p45-cab b[data-p45-crono]{
+  font-size:46px; font-weight:900; color:#fbbf24;
+  font-variant-numeric:tabular-nums; letter-spacing:1px; line-height:1;
+}
+.p45-cab span[data-p45-ciclo]{ font-size:16px; font-weight:800; color:#7dd3fc; }
+.p45-chipvoz{
+  margin-left:auto; font-size:11px; color:#8aa0c8; max-width:46%;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+.p45-orden{
+  flex:1; display:flex; align-items:center; justify-content:center; text-align:center;
+  font-size:30px; font-weight:900; line-height:1.25; color:#E5EEFF;
+  border:1px solid rgba(148,163,184,.2); border-radius:18px; padding:10px 14px;
+  background:rgba(10,18,34,.6); min-height:84px; overflow-y:auto;
+}
+
+.p45-datos{
+  display:flex; flex-wrap:wrap; gap:6px 16px; font-size:13.5px; color:#c7d4f2;
+}
+.p45-datos b{ color:#E5EEFF; }
+
+.p45-botonera{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+.p45-btn{
+  padding:16px 8px; border-radius:14px; cursor:pointer; font-size:15px; font-weight:800;
+  border:1px solid rgba(148,163,184,.3); background:rgba(148,163,184,.1); color:#E5EEFF;
+  letter-spacing:.3px;
+}
+.p45-btn:disabled{ opacity:.28; }
+.p45-btn:not(:disabled):active{ background:rgba(251,191,36,.2); border-color:#fbbf24; }
+.p45-btn.p45-desf{ border-color:rgba(251,191,36,.55); background:rgba(251,191,36,.12); color:#fbbf24; }
+.p45-btn.p45-nodesf{ border-color:rgba(125,211,252,.55); background:rgba(125,211,252,.1); color:#7dd3fc; }
+.p45-btn.p45-rce{ border-color:rgba(74,222,128,.55); background:rgba(74,222,128,.12); color:#4ade80; }
+.p45-btn.p45-fin{ border-color:rgba(248,113,113,.55); background:rgba(248,113,113,.12); color:#fca5a5; }
+
+.p45-pie{ display:flex; }
+.p45-min{
+  flex:1; padding:10px; border-radius:12px; cursor:pointer; font-size:13px; font-weight:700;
+  border:1px solid rgba(148,163,184,.3); background:transparent; color:#8aa0c8;
+}
+
+/* Lanzador dentro del panel 🚨 de RCP */
+.p45-lanzador{
+  width:100%; padding:16px; margin-bottom:12px; border:0; border-radius:14px; cursor:pointer;
+  background:linear-gradient(90deg,#7a1622,#b91c1c); color:#fff;
+  font-size:16px; font-weight:900; letter-spacing:.4px;
+  box-shadow:0 8px 24px rgba(185,28,28,.3); text-align:center;
+}
+.p45-lanzador small{ display:block; margin-top:4px; font-size:11px; font-weight:600; opacity:.85; }
+
+/* Botón en el diagrama de la ficha uci-rcp-algoritmo */
+.p45-ficha-btn{
+  display:block; width:100%; margin-top:10px; padding:10px 12px; border-radius:12px; cursor:pointer;
+  border:1px solid rgba(248,113,113,.45); background:rgba(248,113,113,.1); color:#fca5a5;
+  font-size:13px; font-weight:700;
+}

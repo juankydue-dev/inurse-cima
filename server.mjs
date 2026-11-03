@@ -22,10 +22,12 @@ import {
 } from "./auth.mjs";
 import { validarTerminologia, invalidateNnnCache, nnnStats, nnnDictionary } from "./terminology-connector.mjs";
 import { buscarCercanos } from "./sources/cercanos.mjs";
+import { dondeEstoy } from "./sources/donde-estoy.mjs";
 import { medicineDetail } from "./sources/cima.mjs";
 import { TIPOS_DOCUMENTO, tipoValido } from "./sources/plantillas-proyectos.mjs";
 import { generarEstructura } from "./sources/proyectos-ia.mjs";
 import { analizarImagen, imagenDisponible } from "./sources/imagen-clinica.mjs";
+import { identificarPastilla, pastillaDisponible } from "./sources/pastilla.mjs";
 import { explicarFarmaco, farmacoDisponible } from "./sources/farmaco-ia.mjs";
 import { listarProyectos, crearProyecto, obtenerProyecto, actualizarProyecto, borrarProyecto } from "./proyectos-db.mjs";
 
@@ -758,17 +760,49 @@ ESTRUCTURA SBAR:`;
       const rawBody = await readBodyLarge(req);
       const parsed = rawBody ? JSON.parse(rawBody) : {};
       const tipo = clean(parsed.tipo, 8);
-      if (tipo !== "ecg" && tipo !== "rx") return json(res, 400, { error: "Tipo de imagen no reconocido" });
+      if (tipo !== "ecg" && tipo !== "rx" && tipo !== "lab" && tipo !== "caso") return json(res, 400, { error: "Tipo de imagen no reconocido" });
       const data = typeof parsed.data === "string" ? parsed.data : "";
-      if (!data) return json(res, 400, { error: "Falta la imagen" });
+      // Serie de imágenes del mismo estudio (varias proyecciones, o los cortes
+      // extraídos de un vídeo). Solo datos saneados: base64 y su media type.
+      const imagenes = Array.isArray(parsed.imagenes)
+        ? parsed.imagenes
+            .filter(i => i && typeof i.data === "string" && i.data.length > 0)
+            .slice(0, 14)
+            .map(i => ({ data: i.data, media: clean(i.media, 40) || "image/jpeg", rol: (i.rol === "rx" || i.rol === "lab" || i.rol === "ecg") ? i.rol : undefined }))
+        : [];
+      if (!data && imagenes.length === 0) return json(res, 400, { error: "Falta la imagen" });
       const { answer, proveedor } = await analizarImagen({
         tipo,
         data,
         media: clean(parsed.media, 40) || "image/jpeg",
+        imagenes,
+        origenVideo: parsed.origenVideo === true,
         contexto: clean(parsed.contexto, 1200)
       });
       res.setHeader("Cache-Control", "no-store");
       return json(res, 200, { answer, proveedor, fetchedAt: new Date().toISOString() });
+    }
+
+    // Identificar una pastilla en la casilla de un blíster (SPD): el usuario
+    // dice cuál busca y, si las sabe, cuáles más hay; la foto se compara SÓLO
+    // contra las presentaciones de CIMA de esos nombres (sources/pastilla.mjs).
+    if (u.pathname === "/api/pastilla/identificar" && req.method === "POST") {
+      if (rateLimited(req, { max: 20, windowMs: 10 * 60 * 1000 })) {
+        return json(res, 429, { error: "Demasiadas fotos seguidas. Espera unos minutos." });
+      }
+      if (!pastillaDisponible()) {
+        return json(res, 503, { error: "El servidor no tiene ningún proveedor de IA configurado (ANTHROPIC_API_KEY o GEMINI_API_KEY)." });
+      }
+      const rawBody = await readBodyLarge(req);
+      const parsed = rawBody ? JSON.parse(rawBody) : {};
+      const buscada = clean(parsed.buscada, 120);
+      const data = typeof parsed.data === "string" ? parsed.data : "";
+      if (!buscada) return json(res, 400, { error: "Falta el nombre de la pastilla que buscas" });
+      if (!data) return json(res, 400, { error: "Falta la foto" });
+      const otras = (Array.isArray(parsed.otras) ? parsed.otras : []).map(o => clean(o, 120)).filter(Boolean);
+      const resultado = await identificarPastilla({ buscada, otras, data, media: clean(parsed.media, 40) || "image/jpeg" });
+      res.setHeader("Cache-Control", "no-store");
+      return json(res, 200, { ...resultado, fetchedAt: new Date().toISOString() });
     }
 
     // "Explícame el fármaco" del Vademécum. Mismo motivo que la lectura de
@@ -888,6 +922,25 @@ ESTRUCTURA SBAR:`;
         });
       } catch (err) {
         return json(res, 503, { error: err.message || "Error consultando las fuentes" });
+      }
+    }
+
+    // ── ¿Dónde estoy? (geocodificación inversa) ──
+    // Convierte las coordenadas del usuario en una dirección legible vía
+    // Nominatim (OpenStreetMap). La dirección es la del punto registrado más
+    // cercano en el mapa, por eso se presenta siempre como aproximada. La
+    // consume la herramienta donde_estoy de Javny (chat y Live).
+    if (u.pathname === "/api/donde-estoy" && req.method === "GET") {
+      const lat = Number(u.searchParams.get("lat"));
+      const lon = Number(u.searchParams.get("lon"));
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+        return json(res, 400, { error: "Coordenadas no válidas" });
+      }
+      try {
+        const r = await dondeEstoy(lat, lon);
+        return json(res, 200, { ...r, lat, lon, fetchedAt: new Date().toISOString() });
+      } catch (err) {
+        return json(res, 503, { error: err.message || "Error consultando el geocodificador" });
       }
     }
 
