@@ -27,6 +27,7 @@ import { medicineDetail } from "./sources/cima.mjs";
 import { TIPOS_DOCUMENTO, tipoValido } from "./sources/plantillas-proyectos.mjs";
 import { generarEstructura } from "./sources/proyectos-ia.mjs";
 import { analizarImagen, imagenDisponible } from "./sources/imagen-clinica.mjs";
+import { identificarPastilla, pastillaDisponible } from "./sources/pastilla.mjs";
 import { explicarFarmaco, farmacoDisponible } from "./sources/farmaco-ia.mjs";
 import { listarProyectos, crearProyecto, obtenerProyecto, actualizarProyecto, borrarProyecto } from "./proyectos-db.mjs";
 
@@ -780,6 +781,28 @@ ESTRUCTURA SBAR:`;
       });
       res.setHeader("Cache-Control", "no-store");
       return json(res, 200, { answer, proveedor, fetchedAt: new Date().toISOString() });
+    }
+
+    // Identificar una pastilla en la casilla de un blíster (SPD): el usuario
+    // dice cuál busca y, si las sabe, cuáles más hay; la foto se compara SÓLO
+    // contra las presentaciones de CIMA de esos nombres (sources/pastilla.mjs).
+    if (u.pathname === "/api/pastilla/identificar" && req.method === "POST") {
+      if (rateLimited(req, { max: 20, windowMs: 10 * 60 * 1000 })) {
+        return json(res, 429, { error: "Demasiadas fotos seguidas. Espera unos minutos." });
+      }
+      if (!pastillaDisponible()) {
+        return json(res, 503, { error: "El servidor no tiene ningún proveedor de IA configurado (ANTHROPIC_API_KEY o GEMINI_API_KEY)." });
+      }
+      const rawBody = await readBodyLarge(req);
+      const parsed = rawBody ? JSON.parse(rawBody) : {};
+      const buscada = clean(parsed.buscada, 120);
+      const data = typeof parsed.data === "string" ? parsed.data : "";
+      if (!buscada) return json(res, 400, { error: "Falta el nombre de la pastilla que buscas" });
+      if (!data) return json(res, 400, { error: "Falta la foto" });
+      const otras = (Array.isArray(parsed.otras) ? parsed.otras : []).map(o => clean(o, 120)).filter(Boolean);
+      const resultado = await identificarPastilla({ buscada, otras, data, media: clean(parsed.media, 40) || "image/jpeg" });
+      res.setHeader("Cache-Control", "no-store");
+      return json(res, 200, { ...resultado, fetchedAt: new Date().toISOString() });
     }
 
     // "Explícame el fármaco" del Vademécum. Mismo motivo que la lectura de

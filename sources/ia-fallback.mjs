@@ -30,14 +30,15 @@ export function proveedorDisponible() {
  * @param {string|Array} opts.contenido    mensaje del usuario (texto o bloques)
  * @param {number} [opts.maxOutputTokens]
  * @param {string} [opts.etiqueta]         prefijo del log, p.ej. "Imagen ecg"
+ * @param {"low"|"medium"|"high"} [opts.effort]  sólo Claude; por defecto "low"
  * @returns {Promise<{texto:string, proveedor:"anthropic"|"gemini"}>}
  */
-export async function generarConFallback({ sistema, contenido, maxOutputTokens = 4096, etiqueta = "IA" }) {
+export async function generarConFallback({ sistema, contenido, maxOutputTokens = 4096, etiqueta = "IA", effort = "low" }) {
   const t0 = Date.now();
 
   if (anthropicDisponible()) {
     try {
-      const texto = await anthropicCall(sistema, contenido, { model: ANTHROPIC_MODEL, maxOutputTokens });
+      const texto = await anthropicCall(sistema, contenido, { model: ANTHROPIC_MODEL, maxOutputTokens, effort });
       console.log(`[${etiqueta}] Claude · ${texto.length} caracteres · ${Date.now() - t0} ms`);
       return { texto, proveedor: "anthropic" };
     } catch (err) {
