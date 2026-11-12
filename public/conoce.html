@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Enferix · Asistente clínico de enfermería</title>
+<!-- Página de presentación. noindex mientras la difusión sea entre compañeros:
+     quitar esta línea el día que se quiera que aparezca en buscadores. -->
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="Escalas, fármacos, guías clínicas y planes de cuidados en el móvil. Se instala desde el navegador, sin tienda de aplicaciones.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Enferix · Asistente clínico de enfermería">
+<meta property="og:description" content="Escalas, fármacos, guías clínicas y planes de cuidados en el móvil. Se instala desde el navegador.">
+<meta property="og:image" content="/icon-512-v2.png">
+
+<!-- El MISMO manifiesto que la app: lo que se instala desde aquí es Enferix
+     (start_url "/"), no esta página. No se registra el service worker a
+     propósito: precachea la app entera (varios MB) y quien sólo viene a leer
+     no debe pagarlo; la app registra el suyo la primera vez que se abre. -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#050814">
+<link rel="icon" href="/icon-favicon.png">
+<link rel="apple-touch-icon" href="/icon-apple-touch.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --cn-bg-1: #050814;
+    --cn-bg-2: #080f22;
+    --cn-card: rgba(10, 18, 34, .7);
+    --cn-line: rgba(148, 163, 184, .18);
+    --cn-teal: #33B6A6;
+    --cn-teal-soft: rgba(51, 182, 166, .14);
+    --cn-blue: #7dd3fc;
+    --cn-purple: #c4b5fd;
+    --cn-green: #4ade80;
+    --cn-amber: #fbbf24;
+    --cn-text: #E5EEFF;
+    --cn-text-2: #c7d4f2;
+    --cn-text-3: #8aa0c8;
+  }
+  * { box-sizing: border-box; }
+  /* Without background-attachment: fixed: iOS ignores it and paints light
+     gaps when the page grows taller than the screen. */
+  html { scroll-behavior: smooth; background: var(--cn-bg-2); }
+  body {
+    margin: 0;
+    font-family: 'Outfit', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    color: var(--cn-text);
+    background: linear-gradient(180deg, var(--cn-bg-1) 0, var(--cn-bg-2) 900px, var(--cn-bg-2) 100%);
+    min-height: 100vh;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a { color: var(--cn-teal); }
+  .cn-wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+
+  /* ── Barra superior ── */
+  .cn-top { display: flex; align-items: center; justify-content: space-between; padding: 18px 0; }
+  .cn-brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 20px; letter-spacing: .01em; text-decoration: none; color: var(--cn-text); }
+  .cn-brand img { width: 40px; height: 40px; border-radius: 12px; }
+  .cn-lang { display: inline-flex; border: 1px solid var(--cn-line); border-radius: 12px; overflow: hidden; }
+  .cn-lang button { background: transparent; border: 0; color: var(--cn-text-3); font: inherit; font-size: 14px; font-weight: 600; padding: 8px 12px; cursor: pointer; }
+  .cn-lang button[aria-pressed="true"] { background: var(--cn-teal-soft); color: var(--cn-teal); }
+
+  /* ── Cabecera ── */
+  .cn-hero { display: grid; grid-template-columns: 1.15fr .85fr; gap: 40px; align-items: center; padding: 36px 0 56px; }
+  .cn-eyebrow { display: inline-block; font-size: 13px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--cn-teal); margin-bottom: 14px; }
+  h1 { font-size: clamp(34px, 5.4vw, 54px); line-height: 1.08; margin: 0 0 18px; font-weight: 700; letter-spacing: -.01em; }
+  h1 em { font-style: normal; color: var(--cn-teal); }
+  .cn-lead { font-size: 19px; color: var(--cn-text-2); margin: 0 0 28px; max-width: 34em; }
+
+  .cn-cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .cn-btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; padding: 0 22px; border-radius: 12px; font: inherit; font-size: 17px; font-weight: 600; text-decoration: none; cursor: pointer; border: 1px solid transparent; }
+  .cn-btn svg { width: 20px; height: 20px; flex: none; }
+  .cn-btn-main { background: var(--cn-teal); color: #04121a; }
+  .cn-btn-main:hover { filter: brightness(1.08); }
+  .cn-btn-ghost { background: transparent; color: var(--cn-text); border-color: var(--cn-line); }
+  .cn-btn-ghost:hover { border-color: var(--cn-teal); }
+  .cn-btn:focus-visible, .cn-lang button:focus-visible, .cn-tabs button:focus-visible { outline: 2px solid var(--cn-teal); outline-offset: 2px; }
+  .cn-hint { margin: 14px 0 0; font-size: 15px; color: var(--cn-text-3); min-height: 1.5em; }
+  .cn-hint strong { color: var(--cn-green); font-weight: 600; }
+
+  /* ── Marco de móvil ── */
+  .cn-phone { width: min(280px, 72vw); margin: 0 auto; border-radius: 34px; padding: 9px; background: #0b1326; border: 1px solid rgba(148, 163, 184, .28); box-shadow: 0 30px 80px rgba(0, 0, 0, .55), 0 0 0 1px rgba(51, 182, 166, .08); }
+  .cn-phone img { display: block; width: 100%; height: auto; border-radius: 26px; }
+
+  /* ── Secciones ── */
+  section { padding: 56px 0; border-top: 1px solid var(--cn-line); }
+  h2 { font-size: clamp(26px, 3.6vw, 34px); margin: 0 0 10px; font-weight: 700; letter-spacing: -.005em; }
+  .cn-sub { color: var(--cn-text-2); margin: 0 0 32px; max-width: 44em; font-size: 17px; }
+
+  .cn-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .cn-card { background: var(--cn-card); border: 1px solid var(--cn-line); border-radius: 16px; padding: 22px; }
+  .cn-card h3 { margin: 14px 0 6px; font-size: 18px; font-weight: 600; }
+  .cn-card p { margin: 0; color: var(--cn-text-2); font-size: 15.5px; }
+  .cn-ico { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--cn-teal-soft); color: var(--cn-teal); }
+  .cn-ico svg { width: 24px; height: 24px; }
+  .cn-ico.b { background: rgba(125, 211, 252, .12); color: var(--cn-blue); }
+  .cn-ico.p { background: rgba(196, 181, 253, .12); color: var(--cn-purple); }
+  .cn-ico.g { background: rgba(74, 222, 128, .12); color: var(--cn-green); }
+  .cn-ico.a { background: rgba(251, 191, 36, .12); color: var(--cn-amber); }
+
+  .cn-shots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .cn-shots figure { margin: 0; text-align: center; }
+  .cn-shots .cn-phone { width: min(240px, 100%); }
+  .cn-shots figcaption { margin-top: 14px; color: var(--cn-text-2); font-size: 15px; }
+
+  /* ── Instalación ── */
+  .cn-tabs { display: inline-flex; gap: 6px; padding: 5px; border: 1px solid var(--cn-line); border-radius: 14px; margin-bottom: 20px; flex-wrap: wrap; }
+  .cn-tabs button { background: transparent; border: 0; color: var(--cn-text-2); font: inherit; font-size: 15.5px; font-weight: 600; padding: 10px 16px; border-radius: 10px; cursor: pointer; }
+  .cn-tabs button[aria-selected="true"] { background: var(--cn-teal-soft); color: var(--cn-teal); }
+  .cn-panel { background: var(--cn-card); border: 1px solid var(--cn-line); border-radius: 16px; padding: 24px; display: none; }
+  .cn-panel.on { display: block; }
+  .cn-steps { margin: 0; padding: 0; list-style: none; counter-reset: paso; display: grid; gap: 14px; }
+  .cn-steps li { counter-increment: paso; display: grid; grid-template-columns: 34px 1fr; gap: 14px; align-items: start; font-size: 16.5px; color: var(--cn-text-2); }
+  .cn-steps li::before { content: counter(paso); width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--cn-teal-soft); color: var(--cn-teal); font-weight: 700; font-size: 15px; }
+  .cn-steps b { color: var(--cn-text); font-weight: 600; }
+  .cn-qr { display: grid; grid-template-columns: auto 1fr; gap: 24px; align-items: center; }
+  .cn-qr-box { width: 184px; height: 184px; background: #fff; border-radius: 14px; padding: 12px; display: grid; place-items: center; }
+  .cn-qr-box svg { width: 100%; height: 100%; display: block; }
+  .cn-url { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; color: var(--cn-text-3); word-break: break-all; }
+
+  /* ── Avisos ── */
+  .cn-notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .cn-note { border-left: 3px solid var(--cn-amber); padding: 4px 0 4px 16px; }
+  .cn-note.t { border-color: var(--cn-teal); }
+  .cn-note h3 { margin: 0 0 6px; font-size: 17px; font-weight: 600; }
+  .cn-note p { margin: 0; color: var(--cn-text-2); font-size: 15.5px; }
+
+  footer { border-top: 1px solid var(--cn-line); padding: 36px 0 56px; text-align: center; }
+  footer p { color: var(--cn-text-3); font-size: 14px; margin: 18px 0 0; }
+
+  [hidden] { display: none !important; }
+
+  @media (max-width: 860px) {
+    .cn-hero { grid-template-columns: 1fr; gap: 36px; padding: 16px 0 44px; }
+    .cn-grid, .cn-notes { grid-template-columns: 1fr; }
+    .cn-shots { grid-template-columns: 1fr; gap: 32px; }
+    .cn-qr { grid-template-columns: 1fr; justify-items: start; }
+    section { padding: 44px 0; }
+    .cn-cta .cn-btn { width: 100%; }
+  }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+<div class="cn-wrap">
+
+  <header class="cn-top">
+    <a class="cn-brand" href="/conoce"><img src="/icon-192-v2.png" alt="" width="40" height="40">Enferix</a>
+    <div class="cn-lang" role="group" aria-label="Idioma / Idioma">
+      <button type="button" data-lang="es" aria-pressed="true">ES</button>
+      <button type="button" data-lang="ca" aria-pressed="false">CA</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="cn-hero">
+      <div>
+        <span class="cn-eyebrow" data-t="eyebrow"></span>
+        <h1 data-t="h1"></h1>
+        <p class="cn-lead" data-t="lead"></p>
+        <div class="cn-cta">
+          <button type="button" class="cn-btn cn-btn-main" id="cnInstall">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7.5 11 4.5 4.5 4.5-4.5"/><path d="M5 19.5h14"/></svg>
+            <span data-t="install"></span>
+          </button>
+          <a class="cn-btn cn-btn-ghost" href="/" id="cnOpen" data-t="open"></a>
+        </div>
+        <p class="cn-hint" id="cnHint" role="status"></p>
+      </div>
+      <div class="cn-phone"><img src="/img/conoce/inicio.jpg" width="780" height="1600" data-alt="altHome" alt=""></div>
+    </div>
+
+    <section id="que-hace">
+      <h2 data-t="featH"></h2>
+      <p class="cn-sub" data-t="featSub"></p>
+      <div class="cn-grid" id="cnFeatures"></div>
+    </section>
+
+    <section>
+      <h2 data-t="shotsH"></h2>
+      <p class="cn-sub" data-t="shotsSub"></p>
+      <div class="cn-shots">
+        <figure><div class="cn-phone"><img loading="lazy" src="/img/conoce/inicio.jpg" width="780" height="1600" data-alt="altHome" alt=""></div><figcaption data-t="cap1"></figcaption></figure>
+        <figure><div class="cn-phone"><img loading="lazy" src="/img/conoce/escalas.jpg" width="780" height="1600" data-alt="altEsc" alt=""></div><figcaption data-t="cap2"></figcaption></figure>
+        <figure><div class="cn-phone"><img loading="lazy" src="/img/conoce/nnn.jpg" width="780" height="1600" data-alt="altNnn" alt=""></div><figcaption data-t="cap3"></figcaption></figure>
+      </div>
+    </section>
+
+    <section id="instalar">
+      <h2 data-t="instH"></h2>
+      <p class="cn-sub" data-t="instSub"></p>
+      <div class="cn-tabs" role="tablist">
+        <button type="button" role="tab" id="cnTab-android" aria-controls="cnPanel-android" aria-selected="false">Android</button>
+        <button type="button" role="tab" id="cnTab-ios" aria-controls="cnPanel-ios" aria-selected="false">iPhone / iPad</button>
+        <button type="button" role="tab" id="cnTab-desktop" aria-controls="cnPanel-desktop" aria-selected="false" data-t="tabDesk"></button>
+      </div>
+      <div class="cn-panel" role="tabpanel" id="cnPanel-android" aria-labelledby="cnTab-android"><ol class="cn-steps" data-steps="android"></ol></div>
+      <div class="cn-panel" role="tabpanel" id="cnPanel-ios" aria-labelledby="cnTab-ios"><ol class="cn-steps" data-steps="ios"></ol></div>
+      <div class="cn-panel" role="tabpanel" id="cnPanel-desktop" aria-labelledby="cnTab-desktop">
+        <div class="cn-qr">
+          <div class="cn-qr-box" id="cnQr" role="img" data-aria="qrAlt"></div>
+          <div>
+            <ol class="cn-steps" data-steps="desktop"></ol>
+            <p class="cn-url" id="cnUrl"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2 data-t="notesH"></h2>
+      <p class="cn-sub" data-t="notesSub"></p>
+      <div class="cn-notes">
+        <div class="cn-note"><h3 data-t="n1h"></h3><p data-t="n1p"></p></div>
+        <div class="cn-note t"><h3 data-t="n2h"></h3><p data-t="n2p"></p></div>
+        <div class="cn-note t"><h3 data-t="n3h"></h3><p data-t="n3p"></p></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <button type="button" class="cn-btn cn-btn-ghost" id="cnShare">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="12" r="2.4"/><circle cx="17.5" cy="6" r="2.4"/><circle cx="17.5" cy="18" r="2.4"/><path d="m8.1 10.9 7.3-3.8M8.1 13.1l7.3 3.8"/></svg>
+      <span data-t="share"></span>
+    </button>
+    <p data-t="foot"></p>
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* Textos de la página (chrome). No hay contenido clínico aquí: sólo se
+     describe lo que la app hace, con las mismas palabras que usa la app. */
+  var L = {
+    es: {
+      title: 'Enferix · Asistente clínico de enfermería',
+      eyebrow: 'Asistente clínico de enfermería',
+      h1: 'Lo que consultas en el turno, <em>en el móvil y con sus fuentes</em>',
+      lead: 'Escalas, fármacos, guías clínicas y planes de cuidados en una sola aplicación. Se instala desde el navegador, sin tienda de aplicaciones.',
+      install: 'Instalar en este dispositivo',
+      open: 'Abrir sin instalar',
+      featH: 'Qué hace',
+      featSub: 'Todo lo que aparece aquí está ya en la aplicación. Puedes abrirla y comprobarlo sin registrarte.',
+      shotsH: 'Así se ve',
+      shotsSub: 'Capturas reales de la aplicación en un móvil.',
+      cap1: 'Portada: la pregunta, la farmacología y tu turno',
+      cap2: 'Escalas e índices, ordenados por especialidad',
+      cap3: 'Navegador NANDA · NOC · NIC: lo no verificado se marca como pendiente',
+      altHome: 'Portada de Enferix con la caja de pregunta y el buscador de medicamentos',
+      altEsc: 'Listado de escalas clínicas agrupadas por especialidad',
+      altNnn: 'Navegador NANDA NOC NIC con vínculos verificados y pendientes',
+      instH: 'Cómo instalarla',
+      instSub: 'Enferix es una aplicación web instalable: queda con su icono en la pantalla de inicio y se abre a pantalla completa, como cualquier otra.',
+      tabDesk: 'Ordenador',
+      steps: {
+        android: [
+          'Abre esta página con <b>Chrome</b>.',
+          'Pulsa <b>Instalar en este dispositivo</b>, arriba. Si el botón no responde, abre el menú <b>⋮</b> del navegador y elige <b>Instalar aplicación</b> o <b>Añadir a pantalla de inicio</b>.',
+          'Confirma. El icono de Enferix aparece junto al resto de tus aplicaciones.'
+        ],
+        ios: [
+          'Abre esta página con <b>Safari</b>.',
+          'Pulsa el botón <b>Compartir</b> (el cuadrado con la flecha hacia arriba).',
+          'Elige <b>Añadir a pantalla de inicio</b> y confirma con <b>Añadir</b>.'
+        ],
+        desktop: [
+          'Abre la cámara del móvil y apunta al código.',
+          'Se abrirá esta misma página en el teléfono.',
+          'Sigue allí los pasos de tu móvil (Android o iPhone).'
+        ]
+      },
+      qrAlt: 'Código QR con la dirección de esta página',
+      notesH: 'Antes de usarla',
+      notesSub: 'Tres cosas que conviene saber.',
+      n1h: 'Es una herramienta de apoyo',
+      n1p: 'No sustituye el juicio clínico ni los protocolos de tu centro. Cada respuesta indica de qué ficha o referencia sale, para que puedas contrastarla.',
+      n2h: 'Dice lo que no sabe',
+      n2p: 'Cuando un dato no está en sus fuentes, lo indica en lugar de rellenar. Los vínculos NANDA · NOC · NIC sin verificar aparecen como pendientes.',
+      n3h: 'Con y sin cobertura',
+      n3p: 'Las guías, las escalas y las diluciones quedan guardadas en el dispositivo después del primer uso. El asistente y las búsquedas necesitan conexión.',
+      share: 'Compartir con un compañero',
+      shareText: 'Enferix: escalas, fármacos, guías clínicas y planes de cuidados en el móvil.',
+      copied: 'Enlace copiado.',
+      foot: 'Enferix · Asistente clínico y educativo para profesionales de enfermería',
+      hintReady: 'Listo para instalar en este dispositivo.',
+      hintInstalled: '<strong>Enferix ya está instalada en este dispositivo.</strong>',
+      hintDone: '<strong>Instalada.</strong> Búscala en tu pantalla de inicio.',
+      hintIos: 'En iPhone se instala desde el botón Compartir de Safari. Te lo enseñamos abajo.',
+      hintManual: 'Este navegador no ofrece la instalación directa. Te enseñamos los pasos abajo.',
+      hintDesktop: 'Para tenerla en el móvil, escanea el código de abajo.',
+      features: [
+        { c: '', i: 'ask', h: 'Pregunta y te responde con fuentes', p: 'Escribe o dicta tu duda. Responde apoyándose en el vademécum CIMA-AEMPS, las guías clínicas y la biblioteca de la app, con las referencias al final.' },
+        { c: 'p', i: 'pill', h: 'Farmacología', p: 'Búsqueda de medicamentos en la base oficial CIMA-AEMPS, dosis y perfusión, y comprobación de interacciones.' },
+        { c: 'b', i: 'scale', h: 'Escalas e índices', p: 'Calculadoras de escalas clínicas con su interpretación, ordenadas por especialidad y con favoritas.' },
+        { c: 'g', i: 'book', h: 'Guías clínicas y evidencia', p: 'Fichas por especialidad y por patología. Al final de cada ficha, evidencia relacionada de Europe PMC, NICE y OpenFDA.' },
+        { c: '', i: 'nnn', h: 'NANDA · NOC · NIC', p: 'Navegador de diagnósticos, resultados e intervenciones enlazados. Sólo se muestran como válidos los vínculos verificados.' },
+        { c: 'a', i: 'pin', h: 'Servicios cercanos', p: 'Hospitales, urgencias y desfibriladores cerca de tu ubicación.' },
+        { c: 'b', i: 'mic', h: 'Consulta por voz', p: 'Javny Live: una conversación hablada con el asistente, para cuando no puedes escribir.' },
+        { c: 'p', i: 'doc', h: 'Proyectos con Javny', p: 'Estructura para protocolos, procedimientos, planes de cuidados, sesiones clínicas, TFG y TFM.' },
+        { c: 'g', i: 'more', h: 'Y además', p: 'Mi turno (notas, recordatorios y relevo), electrocardiograma, Rayos X y POCUS, procedimientos y algoritmos.' }
+      ]
+    },
+    ca: {
+      title: 'Enferix · Assistent clínic d\'infermeria',
+      eyebrow: 'Assistent clínic d\'infermeria',
+      h1: 'El que consultes al torn, <em>al mòbil i amb les seves fonts</em>',
+      lead: 'Escales, fàrmacs, guies clíniques i plans de cures en una sola aplicació. S\'instal·la des del navegador, sense botiga d\'aplicacions.',
+      install: 'Instal·lar en aquest dispositiu',
+      open: 'Obrir sense instal·lar',
+      featH: 'Què fa',
+      featSub: 'Tot el que apareix aquí ja és a l\'aplicació. La pots obrir i comprovar-ho sense registrar-te.',
+      shotsH: 'Així es veu',
+      shotsSub: 'Captures reals de l\'aplicació en un mòbil. Els continguts clínics de l\'aplicació són en castellà.',
+      cap1: 'Portada: la pregunta, la farmacologia i el teu torn',
+      cap2: 'Escales i índexs, ordenats per especialitat',
+      cap3: 'Navegador NANDA · NOC · NIC: el que no està verificat es marca com a pendent',
+      altHome: 'Portada d\'Enferix amb la caixa de pregunta i el cercador de medicaments',
+      altEsc: 'Llistat d\'escales clíniques agrupades per especialitat',
+      altNnn: 'Navegador NANDA NOC NIC amb vincles verificats i pendents',
+      instH: 'Com instal·lar-la',
+      instSub: 'Enferix és una aplicació web instal·lable: queda amb la seva icona a la pantalla d\'inici i s\'obre a pantalla completa, com qualsevol altra.',
+      tabDesk: 'Ordinador',
+      steps: {
+        android: [
+          'Obre aquesta pàgina amb <b>Chrome</b>.',
+          'Prem <b>Instal·lar en aquest dispositiu</b>, a dalt. Si el botó no respon, obre el menú <b>⋮</b> del navegador i tria <b>Instal·la l\'aplicació</b> o <b>Afegeix a la pantalla d\'inici</b>.',
+          'Confirma. La icona d\'Enferix apareix amb la resta de les teves aplicacions.'
+        ],
+        ios: [
+          'Obre aquesta pàgina amb <b>Safari</b>.',
+          'Prem el botó <b>Compartir</b> (el quadrat amb la fletxa cap amunt).',
+          'Tria <b>Afegeix a la pantalla d\'inici</b> i confirma amb <b>Afegeix</b>.'
+        ],
+        desktop: [
+          'Obre la càmera del mòbil i apunta al codi.',
+          'S\'obrirà aquesta mateixa pàgina al telèfon.',
+          'Segueix-hi els passos del teu mòbil (Android o iPhone).'
+        ]
+      },
+      qrAlt: 'Codi QR amb l\'adreça d\'aquesta pàgina',
+      notesH: 'Abans de fer-la servir',
+      notesSub: 'Tres coses que convé saber.',
+      n1h: 'És una eina de suport',
+      n1p: 'No substitueix el judici clínic ni els protocols del teu centre. Cada resposta indica de quina fitxa o referència surt, perquè la puguis contrastar.',
+      n2h: 'Diu el que no sap',
+      n2p: 'Quan una dada no és a les seves fonts, ho indica en lloc d\'omplir. Els vincles NANDA · NOC · NIC sense verificar apareixen com a pendents.',
+      n3h: 'Amb cobertura i sense',
+      n3p: 'Les guies, les escales i les dilucions queden desades al dispositiu després del primer ús. L\'assistent i les cerques necessiten connexió.',
+      share: 'Compartir amb un company',
+      shareText: 'Enferix: escales, fàrmacs, guies clíniques i plans de cures al mòbil.',
+      copied: 'Enllaç copiat.',
+      foot: 'Enferix · Assistent clínic i educatiu per a professionals d\'infermeria',
+      hintReady: 'A punt per instal·lar en aquest dispositiu.',
+      hintInstalled: '<strong>Enferix ja està instal·lada en aquest dispositiu.</strong>',
+      hintDone: '<strong>Instal·lada.</strong> Busca-la a la pantalla d\'inici.',
+      hintIos: 'A l\'iPhone s\'instal·la des del botó Compartir de Safari. T\'ho ensenyem a baix.',
+      hintManual: 'Aquest navegador no ofereix la instal·lació directa. T\'ensenyem els passos a baix.',
+      hintDesktop: 'Per tenir-la al mòbil, escaneja el codi de baix.',
+      features: [
+        { c: '', i: 'ask', h: 'Pregunta i et respon amb fonts', p: 'Escriu o dicta el teu dubte. Respon basant-se en el vademècum CIMA-AEMPS, les guies clíniques i la biblioteca de l\'app, amb les referències al final.' },
+        { c: 'p', i: 'pill', h: 'Farmacologia', p: 'Cerca de medicaments a la base oficial CIMA-AEMPS, dosi i perfusió, i comprovació d\'interaccions.' },
+        { c: 'b', i: 'scale', h: 'Escales i índexs', p: 'Calculadores d\'escales clíniques amb la seva interpretació, ordenades per especialitat i amb preferides.' },
+        { c: 'g', i: 'book', h: 'Guies clíniques i evidència', p: 'Fitxes per especialitat i per patologia. Al final de cada fitxa, evidència relacionada d\'Europe PMC, NICE i OpenFDA.' },
+        { c: '', i: 'nnn', h: 'NANDA · NOC · NIC', p: 'Navegador de diagnòstics, resultats i intervencions enllaçats. Només es mostren com a vàlids els vincles verificats.' },
+        { c: 'a', i: 'pin', h: 'Serveis propers', p: 'Hospitals, urgències i desfibril·ladors a prop de la teva ubicació.' },
+        { c: 'b', i: 'mic', h: 'Consulta per veu', p: 'Javny Live: una conversa parlada amb l\'assistent, per a quan no pots escriure.' },
+        { c: 'p', i: 'doc', h: 'Projectes amb Javny', p: 'Estructura per a protocols, procediments, plans de cures, sessions clíniques, TFG i TFM.' },
+        { c: 'g', i: 'more', h: 'I a més', p: 'El meu torn (notes, recordatoris i relleu), electrocardiograma, Raigs X i POCUS, procediments i algoritmes.' }
+      ]
+    }
+  };
+
+  /* Iconos monolínea (stroke 1.6, currentColor), como el sistema de la app. */
+  var ICONS = {
+    ask: '<path d="M4.5 5.5h15v10h-8l-4 3.5v-3.5h-3z"/><path d="M8.5 9.5h7M8.5 12.2h4.5"/>',
+    pill: '<rect x="3.2" y="8.2" width="17.6" height="7.6" rx="3.8" transform="rotate(-35 12 12)"/><path d="m9.9 7.6 4.3 6.2"/>',
+    scale: '<path d="M4 19.5h16"/><rect x="5.5" y="11" width="3" height="8.5"/><rect x="10.5" y="6.5" width="3" height="13"/><rect x="15.5" y="13.5" width="3" height="6"/>',
+    book: '<path d="M5 5.2c2.6-.8 5-.5 7 1 2-1.5 4.400-1.800 7-1v13c-2.600-.8-5-.5-7 1-2-1.500-4.400-1.800-7-1z"/><path d="M12 6.200v13"/>',
+    nnn: '<circle cx="5.500" cy="12" r="2.200"/><circle cx="18" cy="6" r="2.200"/><circle cx="18" cy="18" r="2.200"/><path d="M7.600 11.100 15.900 7M7.600 12.900l8.300 4.100"/>',
+    pin: '<path d="M12 20.500s6-5.400 6-10.300a6 6 0 0 0-12 0c0 4.900 6 10.300 6 10.300z"/><circle cx="12" cy="10.200" r="2.200"/>',
+    mic: '<rect x="9" y="3.500" width="6" height="10.500" rx="3"/><path d="M5.800 11.500a6.200 6.200 0 0 0 12.400 0M12 17.700v3"/>',
+    doc: '<path d="M7 3.500h7l4 4v13H7z"/><path d="M14 3.500v4h4M9.800 12h5.400M9.800 15.200h5.400"/>',
+    more: '<rect x="4" y="4" width="6.500" height="6.500" rx="1.500"/><rect x="13.500" y="4" width="6.500" height="6.500" rx="1.500"/><rect x="4" y="13.500" width="6.500" height="6.500" rx="1.500"/><path d="M16.750 13.800v6M13.750 16.800h6"/>'
+  };
+  function icon(name) {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS[name] + '</svg>';
+  }
+
+  /* Idioma: ?lang= > <html lang> > localStorage.inurse_lang > navigator > es. */
+  function detectLang() {
+    var q = new URLSearchParams(location.search).get('lang');
+    if (q === 'es' || q === 'ca') return q;
+    var stored = null;
+    try { stored = localStorage.getItem('inurse_lang'); } catch (e) {}
+    if (stored === 'es' || stored === 'ca') return stored;
+    return /^ca\b/i.test(navigator.language || '') ? 'ca' : 'es';
+  }
+  var lang = detectLang();
+  var hintKey = '';
+
+  function $(id) { return document.getElementById(id); }
+
+  function render() {
+    var t = L[lang];
+    document.documentElement.lang = lang;
+    document.title = t.title;
+    document.querySelectorAll('[data-t]').forEach(function (el) { el.innerHTML = t[el.getAttribute('data-t')]; });
+    document.querySelectorAll('[data-alt]').forEach(function (el) { el.alt = t[el.getAttribute('data-alt')]; });
+    document.querySelectorAll('[data-aria]').forEach(function (el) { el.setAttribute('aria-label', t[el.getAttribute('data-aria')]); });
+    document.querySelectorAll('[data-steps]').forEach(function (ol) {
+      ol.innerHTML = t.steps[ol.getAttribute('data-steps')].map(function (s) { return '<li><span>' + s + '</span></li>'; }).join('');
+    });
+    $('cnFeatures').innerHTML = t.features.map(function (f) {
+      return '<div class="cn-card"><div class="cn-ico ' + f.c + '">' + icon(f.i) + '</div><h3>' + f.h + '</h3><p>' + f.p + '</p></div>';
+    }).join('');
+    document.querySelectorAll('.cn-lang button').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-lang') === lang));
+    });
+    $('cnHint').innerHTML = hintKey ? t[hintKey] : '';
+  }
+  function setHint(key) { hintKey = key; $('cnHint').innerHTML = key ? L[lang][key] : ''; }
+
+  document.querySelectorAll('.cn-lang button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      lang = b.getAttribute('data-lang');
+      try { localStorage.setItem('inurse_lang', lang); } catch (e) {}
+      render();
+    });
+  });
+
+  /* ── Plataforma ── */
+  var ua = navigator.userAgent || '';
+  var isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var isAndroid = /Android/.test(ua);
+  var platform = isIOS ? 'ios' : isAndroid ? 'android' : 'desktop';
+  var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+
+  /* ── Pestañas de instalación ── */
+  var qrDone = false;
+  function selectTab(name) {
+    ['android', 'ios', 'desktop'].forEach(function (n) {
+      $('cnTab-' + n).setAttribute('aria-selected', String(n === name));
+      $('cnPanel-' + n).classList.toggle('on', n === name);
+    });
+    if (name === 'desktop') drawQr();
+  }
+  ['android', 'ios', 'desktop'].forEach(function (n) {
+    $('cnTab-' + n).addEventListener('click', function () { selectTab(n); });
+  });
+
+  /* El QR lleva la dirección de ESTA página en el servidor que la sirve: no hay
+     dominio escrito a mano que pueda quedarse viejo. La librería (56 KB) sólo
+     se descarga cuando alguien abre la pestaña del ordenador. */
+  var pageUrl = location.origin + '/conoce';
+  function drawQr() {
+    if (qrDone) return;
+    qrDone = true;
+    $('cnUrl').textContent = pageUrl;
+    var s = document.createElement('script');
+    s.src = '/js/vendor/qrcode-generator.js';
+    s.onload = function () {
+      var qr = window.qrcode(0, 'M');
+      qr.addData(pageUrl);
+      qr.make();
+      $('cnQr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+    };
+    s.onerror = function () { $('cnQr').hidden = true; };
+    document.head.appendChild(s);
+  }
+
+  /* ── Instalación ── */
+  var deferred = null;
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferred = e;
+    if (!standalone) setHint('hintReady');
+  });
+  window.addEventListener('appinstalled', function () {
+    deferred = null;
+    setHint('hintDone');
+  });
+
+  $('cnInstall').addEventListener('click', function () {
+    if (deferred) {
+      deferred.prompt();
+      deferred.userChoice.then(function () { deferred = null; });
+      return;
+    }
+    /* Sin aviso nativo (Safari, Firefox, o Chrome que aún no lo ha ofrecido):
+       se llevan los pasos a la vista en vez de dejar un botón que no hace nada. */
+    selectTab(platform);
+    setHint(platform === 'ios' ? 'hintIos' : platform === 'desktop' ? 'hintDesktop' : 'hintManual');
+    $('instalar').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  /* ── Compartir ── */
+  $('cnShare').addEventListener('click', function () {
+    var t = L[lang];
+    if (navigator.share) {
+      navigator.share({ title: 'Enferix', text: t.shareText, url: pageUrl }).catch(function () {});
+      return;
+    }
+    var label = $('cnShare').querySelector('span');
+    var done = function () { label.textContent = t.copied; setTimeout(function () { label.textContent = L[lang].share; }, 2200); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(pageUrl).then(done, function () {});
+  });
+
+  render();
+  selectTab(platform);
+  if (standalone) setHint('hintInstalled');
+})();
+</script>
+</body>
+</html>

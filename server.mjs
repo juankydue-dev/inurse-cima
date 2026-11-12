@@ -1087,6 +1087,11 @@ ESTRUCTURA SBAR:`;
       }
     }
 
+    // Página de presentación para difundir la app (enlace corto para QR y WhatsApp).
+    if (u.pathname === "/conoce" || u.pathname === "/conoce/") {
+      return sendFile(req, res, path.join(PUBLIC, "conoce.html"));
+    }
+
     serveStatic(req, res);
   } catch (error) {
     console.error(error);
