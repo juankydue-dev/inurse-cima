@@ -41,6 +41,13 @@ window.EnferixCloud = (function(){
   var user = null;
 
   function isSecretKey(k){ return /key|token|password|apikey/i.test(k); }
+  /* Claves que NUNCA salen del dispositivo, aunque haya sesión: la ficha
+     personal de Emergencia SOS (datos de salud; su pantalla promete que no va
+     a ningún servidor). MISMA LISTA que CLAVES_LOCALES en
+     sources/sincronizacion.mjs, que el servidor también aplica: al tocar una,
+     tocar la otra. */
+  var CLAVES_LOCALES = ['guiaHJ23_sos'];
+  function noSincroniza(k){ return isSecretKey(k) || CLAVES_LOCALES.indexOf(k) !== -1; }
 
   function scheduleFlush(){ clearTimeout(timer); timer = setTimeout(flush, 1500); }
   function flush(){
@@ -56,13 +63,13 @@ window.EnferixCloud = (function(){
 
   localStorage.setItem = function(k,v){
     origSet(k,v);
-    if(isSecretKey(k)) return;
+    if(noSincroniza(k)) return;
     pending[k]=v;
     scheduleFlush();
   };
   localStorage.removeItem = function(k){
     origRemove(k);
-    if(isSecretKey(k)) return;
+    if(noSincroniza(k)) return;
     pending[k]=null;
     scheduleFlush();
   };
@@ -72,7 +79,7 @@ window.EnferixCloud = (function(){
     var batch = {};
     for(var i=0;i<localStorage.length;i++){
       var k = localStorage.key(i);
-      if(isSecretKey(k)) continue;
+      if(noSincroniza(k)) continue;
       batch[k] = localStorage.getItem(k);
     }
     if(!Object.keys(batch).length) return Promise.resolve();
@@ -89,7 +96,7 @@ window.EnferixCloud = (function(){
       .then(function(res){
         var data = res.data || {};
         Object.keys(data).forEach(function(k){
-          if(isSecretKey(k)) return;
+          if(noSincroniza(k)) return;
           if(data[k]===null) origRemove(k); else origSet(k, data[k]);
         });
       });

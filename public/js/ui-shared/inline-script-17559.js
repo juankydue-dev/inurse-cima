@@ -569,7 +569,7 @@
         if(user){
           box.innerHTML=''
             +'<div class="nx-aj-row"><span>✅ '+esc(user.email)+'</span><button class="nx-aj-theme-btn" id="nxLogoutBtn">Cerrar sesión</button></div>'
-            +'<div class="nx-aj-field"><label style="text-transform:none;font-weight:400;color:#8aa0c8">Tu perfil, turnos, favoritos y ajustes se sincronizan automáticamente con la nube.</label></div>';
+            +'<div class="nx-aj-field"><label style="text-transform:none;font-weight:400;color:#8aa0c8">Tus datos se sincronizan automáticamente con la nube. Tu ficha de Emergencia SOS no: se queda solo en este dispositivo.</label></div>';
           document.getElementById('nxLogoutBtn').onclick=function(){
             window.EnferixCloud.logout().then(renderAccountBox);
           };
