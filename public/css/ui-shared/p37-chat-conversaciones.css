@@ -1,0 +1,65 @@
+/* P37 · Conversaciones guardadas del chat de Javny */
+
+.p37-modal{
+  position:fixed; inset:0; z-index:17000; display:none;
+  background:rgba(5,8,20,.72); backdrop-filter:blur(4px);
+  align-items:center; justify-content:center; padding:18px 16px;
+}
+.p37-modal.on{ display:flex; }
+
+.p37-caja{
+  width:min(560px,100%); max-height:min(78vh,640px);
+  display:flex; flex-direction:column;
+  background:rgba(10,18,34,.97); border:1px solid rgba(148,163,184,.18);
+  border-radius:20px; box-shadow:0 24px 60px rgba(0,0,0,.5);
+  padding:16px 16px 12px;
+}
+.p37-cab{ display:flex; align-items:center; gap:10px; margin:0 0 10px; }
+.p37-cab h3{ margin:0; flex:1; font-size:16px; color:#E5EEFF; font-weight:800; }
+.p37-x{
+  width:32px; height:32px; border-radius:10px; border:1px solid rgba(148,163,184,.25);
+  background:rgba(148,163,184,.08); color:#c7d4f2; font-size:14px; cursor:pointer;
+}
+.p37-x:hover{ background:rgba(248,113,113,.14); color:#fca5a5; }
+
+.p37-nueva{
+  margin:0 0 10px; padding:10px 12px; border-radius:12px; cursor:pointer;
+  border:1px dashed rgba(51,182,166,.55); background:rgba(51,182,166,.08);
+  color:#33B6A6; font-weight:700; font-size:13px;
+}
+.p37-nueva:hover{ background:rgba(51,182,166,.16); }
+
+.p37-lista{ overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding:2px; }
+.p37-item{
+  display:flex; align-items:stretch; gap:6px;
+  border:1px solid rgba(148,163,184,.18); border-radius:14px;
+  background:rgba(148,163,184,.05);
+}
+.p37-item.p37-actual{ border-color:rgba(51,182,166,.55); }
+.p37-abrir{
+  flex:1; min-width:0; text-align:left; cursor:pointer; border:0; background:transparent;
+  padding:10px 4px 10px 12px; border-radius:14px 0 0 14px;
+}
+.p37-abrir b{
+  display:block; color:#E5EEFF; font-size:13px; font-weight:700; line-height:1.3;
+  overflow:hidden; text-overflow:ellipsis; display:-webkit-box;
+  -webkit-line-clamp:2; -webkit-box-orient:vertical;
+}
+.p37-abrir small{ display:block; margin-top:3px; color:#8aa0c8; font-size:11px; }
+.p37-abrir:hover b{ color:#33B6A6; }
+.p37-del{
+  flex:0 0 auto; width:36px; border:0; cursor:pointer; border-radius:0 14px 14px 0;
+  background:transparent; color:#8aa0c8; font-size:13px;
+}
+.p37-del:hover{ background:rgba(248,113,113,.12); color:#fca5a5; }
+
+.p37-vacio{
+  padding:22px 12px; text-align:center; color:#8aa0c8; font-size:13px; line-height:1.5;
+  border:1px dashed rgba(148,163,184,.25); border-radius:14px;
+}
+.p37-nota{ margin:10px 2px 0; color:#8aa0c8; font-size:11px; line-height:1.4; }
+
+@media (max-width:480px){
+  .p37-modal{ padding:10px; align-items:flex-end; }
+  .p37-caja{ max-height:82vh; border-radius:18px 18px 12px 12px; }
+}

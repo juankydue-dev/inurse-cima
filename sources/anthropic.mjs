@@ -191,7 +191,7 @@ export async function streamAnthropicCall(systemPrompt, userPrompt, {
  * ECG y radiología. Con una cadena se comporta exactamente igual que antes.
  */
 export async function anthropicCall(systemPrompt, userPrompt, {
-  model, maxOutputTokens = 2048
+  model, maxOutputTokens = 2048, effort = "low"
 } = {}) {
   const client = getCliente();
   const mensaje = await client.messages.create({
@@ -199,7 +199,7 @@ export async function anthropicCall(systemPrompt, userPrompt, {
     max_tokens: maxOutputTokens,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
-    output_config: { effort: "low" }
+    output_config: { effort }
   });
 
   if (mensaje.stop_reason === "refusal") {

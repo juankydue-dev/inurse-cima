@@ -23,6 +23,7 @@
 import { getEscalas, getDiluciones, getVademecum, getDocs } from "./datos-app.mjs";
 import { comprobarInteracciones } from "./interacciones.mjs";
 import { buscarCercanos } from "./cercanos.mjs";
+import { dondeEstoy } from "./donde-estoy.mjs";
 
 function norm(s) {
   return String(s == null ? "" : s)
@@ -397,6 +398,34 @@ async function centrosCercanos({ tipo, radio_metros }, ubicacion) {
   return { centros: items, radio_metros: radius, fuente: r.source };
 }
 
+// La dirección que devuelve Nominatim es la del punto REGISTRADO más cercano
+// en el mapa, no la posición exacta del usuario: la nota obliga al modelo a
+// presentarla como aproximada, igual que la regla de nunca inventar un centro.
+async function ubicacionActual(ubicacion, onEnlace) {
+  if (!ubicacion || !Number.isFinite(ubicacion.lat) || !Number.isFinite(ubicacion.lon)) {
+    return { error: SIN_UBICACION };
+  }
+  let r;
+  try {
+    r = await dondeEstoy(ubicacion.lat, ubicacion.lon);
+  } catch (err) {
+    return { error: `No se pudo convertir la posición en una dirección: ${err instanceof Error ? err.message : err}` };
+  }
+  // Enlace tipo "mapa" por el mismo canal que fichas y escalas: la app pinta
+  // bajo la respuesta un botón con la dirección que abre el mapa en la
+  // posición REAL del usuario (la URL se compone aquí, solo con sus
+  // coordenadas numéricas) y otro para compartirla.
+  if (typeof onEnlace === "function") {
+    onEnlace({
+      tipo: "mapa",
+      id: `${ubicacion.lat},${ubicacion.lon}`,
+      titulo: (r.direccion || "Mi ubicación").slice(0, 90),
+      url: `https://www.google.com/maps/search/?api=1&query=${ubicacion.lat},${ubicacion.lon}`
+    });
+  }
+  return { ...r, nota: "Dirección APROXIMADA (el punto más cercano registrado en OpenStreetMap, no la posición exacta). Preséntala siempre así. La app pinta debajo un botón que abre el mapa con la posición y otro para compartirla: menciónalo." };
+}
+
 /* ── Catálogo de herramientas ──────────────────────────────────────────────── */
 
 export function construirHerramientas({ ubicacion, onEnlace } = {}) {
@@ -488,6 +517,15 @@ export function construirHerramientas({ ubicacion, onEnlace } = {}) {
         }
       },
       run: (input) => centrosCercanos(input || {}, ubicacion)
+    },
+    {
+      name: "donde_estoy",
+      description:
+        "Dirección aproximada del usuario (calle, barrio, municipio, provincia) a partir de la ubicación que ya " +
+        "compartió con la app, vía OpenStreetMap. Si no hay ubicación, lo dice y hay que pedirle que la active. " +
+        "Presenta la dirección SIEMPRE como aproximada; nunca inventes una calle ni un municipio.",
+      input_schema: { type: "object", properties: {} },
+      run: () => ubicacionActual(ubicacion, onEnlace)
     }
   ];
 }
@@ -505,6 +543,7 @@ Tienes herramientas que consultan datos REALES de la aplicación. Normas:
 - **Escalas**: para calcular o interpretar cualquier escala clínica usa SIEMPRE calcular_escala. Tú solo extraes los parámetros de lo que te cuentan y presentas el resultado y la interpretación LITERALES que devuelve la herramienta. Nunca calcules ni interpretes una escala de memoria, ni "corrijas" su resultado. Si la herramienta dice que faltan campos, pídelos a quien consulta en vez de suponerlos.
 - **Fármacos**: para diluciones, vías de administración y compatibilidades usa dilucion_farmaco y transmite sus datos literales. Para interacciones usa interacciones_farmacos y cita lo que devuelva, incluido su aviso: nunca digas que "no hay interacción" porque no haya mención.
 - **Cercanos**: para el hospital, las urgencias o el desfibrilador más cercano usa centros_cercanos. Si responde que no hay ubicación, dile al usuario cómo activarla y no des ningún centro de memoria.
+- **Ubicación**: si preguntan dónde están o por su dirección, usa donde_estoy y di la dirección que devuelva marcándola SIEMPRE como aproximada; añade que debajo tiene un botón con la dirección que abre el mapa y otro para compartir la ubicación. Si responde que no hay ubicación, dile al usuario cómo activarla y no digas ninguna calle, barrio ni municipio de memoria.
 - **Enlaces**: cuando la ficha o la escala de Enferix sobre el tema le sirva a quien pregunta, usa buscar_en_enferix para que la app la enlace debajo de tu respuesta, y nómbrala en el texto.
 - Si una herramienta devuelve un error o no tiene el dato, dilo con esas palabras ("no está disponible en Enferix") en vez de rellenar el hueco de memoria.
 - En MODO EMERGENCIA el formato manda igual que siempre: 112 primero, UNA acción, frases cortas. Como mucho, usa centros_cercanos si piden el DEA o el hospital más cercano; no encadenes herramientas mientras alguien tiene una urgencia delante.`;

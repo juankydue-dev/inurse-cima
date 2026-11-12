@@ -520,7 +520,8 @@
       +'<div class="nx-aj-field"><label for="nxJavnyModel">Modelo</label><select id="nxJavnyModel">'
       + MODELOS.map(function(m){ return '<option value="'+m.id+'"'+(curModel===m.id?' selected':'')+'>'+esc(m.t)+'</option>'; }).join('')
       +'</select></div>'
-      +'<div class="nx-aj-field"><label for="nxJavnyKey">Clave API Gemini</label><input type="password" id="nxJavnyKey" value="'+esc(javnySaved.apiKey||'')+'" placeholder="AIza..."></div>'
+      +'<div class="nx-aj-field"><label for="nxJavnyKey">Clave API Gemini (opcional)</label><input type="password" id="nxJavnyKey" value="'+esc(javnySaved.apiKey||'')+'" placeholder="AIza..."></div>'
+      +'<div class="nx-aj-row" style="margin-top:2px"><span style="font-size:12px;color:#8aa0c8;line-height:1.4">Sin clave propia, Javny usa el servidor seguro de Enferix (recomendado: activa las herramientas del chat)</span><button class="nx-aj-theme-btn" id="nxJavnyKeyClear">🗑 Quitar clave</button></div>'
       +'<button class="nx-aj-btn" id="nxJavnySave">Guardar configuración de Javny</button>'
       +'</div>'
       +'</div>'
@@ -781,11 +782,31 @@
       if(typeof window.openSos==='function')window.openSos();
     };
 
+    /* La clave vive, según la época de cada componente, en varias claves de
+       localStorage (la lista es la misma CLAVES_API de inurse-prefs-js.js). El
+       chat lee 'guiaHJ23_apikey': antes este botón escribía solo en
+       'gemini_api_key', así que guardar o vaciar el campo no cambiaba nada
+       real. Ahora el campo manda sobre todas, al guardar y al quitar. */
+    var AJ_CLAVES_API=['guiaHJ23_apikey','gemini_api_key','inurse_gemini_api_key_v1','in51_gemini_key','inurse52_gemini_api_key'];
+    function ajQuitarClaveApi(){
+      AJ_CLAVES_API.forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} });
+      ['inurse_vivi_config_v1','inurse52_javny_config'].forEach(function(k){
+        try{ var o=JSON.parse(localStorage.getItem(k)||'null'); if(o&&o.apiKey!==undefined){ delete o.apiKey; localStorage.setItem(k,JSON.stringify(o)); } }catch(e){}
+      });
+    }
     document.getElementById('nxJavnySave').onclick=function(){
-      var cfg={ name:document.getElementById('nxJavnyName').value.trim()||'Javny', detail:document.getElementById('nxJavnyDetail').value, lang:document.getElementById('nxJavnyLang').value, apiKey:document.getElementById('nxJavnyKey').value.trim() };
+      var apiKey=document.getElementById('nxJavnyKey').value.trim();
+      var cfg={ name:document.getElementById('nxJavnyName').value.trim()||'Javny', detail:document.getElementById('nxJavnyDetail').value, lang:document.getElementById('nxJavnyLang').value };
+      if(apiKey) cfg.apiKey=apiKey;
       try{ localStorage.setItem('inurse_vivi_config_v1',JSON.stringify(cfg)); }catch(e){}
-      if(cfg.apiKey) try{ localStorage.setItem('gemini_api_key',cfg.apiKey); }catch(e){}
+      if(apiKey){ AJ_CLAVES_API.forEach(function(k){ try{ localStorage.setItem(k,apiKey); }catch(e){} }); }
+      else ajQuitarClaveApi();
       this.textContent='✓ Guardado'; var self=this; setTimeout(function(){ self.textContent='Guardar configuración de Javny'; },1500);
+    };
+    document.getElementById('nxJavnyKeyClear').onclick=function(){
+      document.getElementById('nxJavnyKey').value='';
+      ajQuitarClaveApi();
+      this.textContent='✓ Clave quitada'; var self=this; setTimeout(function(){ self.textContent='🗑 Quitar clave'; },2000);
     };
 
     document.getElementById('nxPhotoBtn').onclick=function(){
