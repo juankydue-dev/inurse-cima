@@ -1,4 +1,5 @@
 import pg from "pg";
+import { CLAVES_LOCALES } from "./sources/sincronizacion.mjs";
 
 const { Pool } = pg;
 
@@ -65,4 +66,8 @@ export async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_proyectos_user_id ON proyectos(user_id);
   `);
   console.log("Esquema de base de datos verificado (users, sessions, user_data, proyectos).");
+  // Borra las copias de claves que no deben estar en el servidor (ficha SOS),
+  // subidas antes de que se excluyeran de la sincronización. Idempotente.
+  const purga = await pool.query("DELETE FROM user_data WHERE key = ANY($1)", [CLAVES_LOCALES]);
+  if (purga.rowCount) console.log(`[Sincronización] Borradas ${purga.rowCount} copias de claves locales (${CLAVES_LOCALES.join(", ")}).`);
 }

@@ -1,3 +1,4 @@
+import { CLAVES_LOCALES, esSecreta, esLocal, sincronizable } from "./sources/sincronizacion.mjs";
 import http from "node:http";
 import https from "node:https";
 import fs from "node:fs";
@@ -974,9 +975,12 @@ ESTRUCTURA SBAR:`;
       const cookies = parseCookies(req);
       const user = await getUserBySession(cookies.sid);
       if (!user) return json(res, 401, { error: "Sesión no válida" });
+      // Las claves locales no se guardan en el servidor: si quedó alguna copia
+      // de antes (ficha SOS), se borra aquí y nunca se devuelve.
+      await pool.query("DELETE FROM user_data WHERE user_id=$1 AND key = ANY($2)", [user.id, CLAVES_LOCALES]);
       const r = await pool.query("SELECT key, value FROM user_data WHERE user_id=$1", [user.id]);
       const data = {};
-      r.rows.forEach(row => { data[row.key] = row.value; });
+      r.rows.forEach(row => { if (sincronizable(row.key)) data[row.key] = row.value; });
       return json(res, 200, { data });
     }
     if (u.pathname === "/api/sync/bulk" && req.method === "POST") {
@@ -990,8 +994,10 @@ ESTRUCTURA SBAR:`;
       const entries = Object.entries(data).slice(0, 200);
       for (const [rawKey, value] of entries) {
         const key = clean(rawKey, 120);
-        if (!key || /key|token|password|apikey/i.test(key)) continue;
-        if (value === null) {
+        if (!key || esSecreta(key)) continue;
+        // Una clave local que llega (cliente antiguo en caché) no se guarda, y
+        // si había una copia de antes se borra.
+        if (esLocal(key) || value === null) {
           await pool.query("DELETE FROM user_data WHERE user_id=$1 AND key=$2", [user.id, key]);
         } else {
           await pool.query(
